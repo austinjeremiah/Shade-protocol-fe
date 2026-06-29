@@ -1,4 +1,10 @@
 #![no_std]
+//! DEPRECATED (P1.1). The canonical Shade settlement contract is `shielded_pool`
+//! (ShadePool / ShadeVaultV2), which integrates the Merkle tree, proof verifier,
+//! and nullifier spend in one contract on the live path. This standalone
+//! ShadeVault (tree/nullifier/compliance split across separate contracts) is kept
+//! only for historical reference and is NOT deployed on the active path. Do not
+//! add new flows here — use `shielded_pool`.
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec, symbol_short};
 
 #[contracttype]

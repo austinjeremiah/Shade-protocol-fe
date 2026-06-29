@@ -42,3 +42,4 @@ circuits/**/output/
 scratchpad/
 .scratch/
 docs/test-report.generated.md
+docs/reports/

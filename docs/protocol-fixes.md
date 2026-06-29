@@ -149,15 +149,45 @@ deposit verifier `CC4FGBVT4BYYM5S3NJKJGOLMICQV3HADL5XRHXMXFQEZ5XQ2K2EJHNJO`):
 - NEGATIVE: tampered `amount` arg → `Error(Contract, #22) WrongDepositField`. PASS.
 - NEGATIVE: tampered `commitment` arg → `Error(Contract, #21) WrongCommitment`. PASS.
 
-## Remaining PHASE 1 (next)
+### P1.9 — Root auditor service (`apps/root-auditor`)
+A standalone service/job that polices the off-chain-root design. It reconstructs
+the commitment list from the pool's on-chain `deposit` events (the contract emits
+every commitment; DB `note_commitments` is a fallback when events age out of RPC
+retention), recomputes the lean-imt root independently via the new coinutils
+`compute-root` command (byte-identical to the circuit's lean-imt), and compares it
+to the root the registrar stored on-chain (`get_root`). On divergence it records a
+`ROOT_MISMATCH_CRITICAL` finding; the API must refuse spends against a flagged
+root. New `db/migrations/002_root_audit.sql` (`root_audit_runs`,
+`root_audit_findings`). HTTP surface: `GET /health`, `GET /v1/audit` (200 OK / 409
+on critical). One-shot CLI `npm run root-auditor:audit` exits non-zero on mismatch.
+- Test `npm run root-auditor:test` (DoD: "wrong root submitted by registrar is
+  detected"): honest root → OK; wrong root → `ROOT_MISMATCH_CRITICAL`; swapped-leaf
+  root → detected; LIVE audit against the deployed pool reconstructs from events
+  and matches the on-chain root. All PASS.
 
-- **P1.4/8 — deposit_note_mint circuit** binding the CCTP message to the note.
-- **P1.1 — Canonical naming:** document `shielded_pool` as `ShadePool` and mark
-  legacy `ShadeVault`/`CommitmentTree` deprecated (not on the active path).
-- **P1.9 — Root auditor service** (recompute lean-imt root from events, compare
-  on-chain, flag `ROOT_MISMATCH_CRITICAL`).
-- **P1.11 — Fresh `docs/test-report.generated.md`** per run + archive old; fail
-  on `FAIL`.
+### P1.1 — Canonical contract architecture
+`shielded_pool` is documented as the canonical `ShadePool` / `ShadeVaultV2` (header
+in `contracts/stellar/shielded_pool/src/lib.rs`). The legacy `shade_vault` and
+`commitment_tree` contracts carry DEPRECATED headers and are not wired into any
+live flow; all env vars/docs/e2e point at `SHIELDED_POOL_CONTRACT`. There are no
+longer two competing settlement paths.
+
+### P1.11 — Fresh test report per run + fail-on-FAIL
+The canonical test report is now `docs/test-report.generated.md` (gitignored),
+regenerated fresh per run — no more stale-FAIL accumulation in a committed file.
+`lib/report.ts` `beginReport()` archives the previous generated report to
+`docs/reports/<YYYY-MM-DD-HHMMSS>.md` and writes a header with `run_id`, git
+commit, timestamp, node version, network, and the deployed contract IDs;
+`writeCheckReport` appends sections to it. Standalone e2e scripts reset on first
+write; `e2e:all` calls `beginReport` once and shares a `SHADE_REPORT_RUN_ID` with
+its children so the whole suite is one report. `npm run test-report` prints the
+generated report and exits non-zero if any `FAIL` line is present (CI gate). The
+legacy `docs/test-report.md` is retained as a historical deploy log only.
+
+## PHASE 1 — COMPLETE ✅
+All gating protocol fixes (P1.1–P1.11) are done and verified on testnet. Next is
+PHASE 2 (backend services), then 3 (Docker), 4 (Next.js), 5 (auth/user DB), 6/7
+(app tests + UI e2e).
 
 ## Then PHASES 2-7 (multi-session)
 Real API endpoints, relayer/prover/solver/root-auditor services + queue, wallet

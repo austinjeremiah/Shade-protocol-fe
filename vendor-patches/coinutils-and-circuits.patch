@@ -1,5 +1,5 @@
 diff --git a/privacy-pools/cli/coinutils/src/cli/args.rs b/privacy-pools/cli/coinutils/src/cli/args.rs
-index 440aa84..128738e 100644
+index 440aa84..17a789f 100644
 --- a/privacy-pools/cli/coinutils/src/cli/args.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/args.rs
 @@ -30,6 +30,39 @@ pub enum Commands {
@@ -42,10 +42,15 @@ index 440aa84..128738e 100644
      },
      /// Update association set
      UpdateAssociation {
-@@ -38,6 +71,24 @@ pub enum Commands {
+@@ -38,6 +71,29 @@ pub enum Commands {
          /// Label to add
          label: String,
      },
++    /// P1.9 recompute the lean-imt state root over a commitment list (no coin needed)
++    ComputeRoot {
++        /// State file path (JSON with a `commitments` array of decimal field elements)
++        state_file: String,
++    },
 +    /// Build a hidden-amount PrivateTransfer witness (spend input -> output note + fee)
 +    Transfer {
 +        /// Input coin file path
@@ -68,7 +73,7 @@ index 440aa84..128738e 100644
  
  impl Cli {
 diff --git a/privacy-pools/cli/coinutils/src/cli/commands.rs b/privacy-pools/cli/coinutils/src/cli/commands.rs
-index 92bf7f3..b348578 100644
+index 92bf7f3..22ce254 100644
 --- a/privacy-pools/cli/coinutils/src/cli/commands.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/commands.rs
 @@ -57,12 +57,24 @@ impl CommandHandler {
@@ -124,10 +129,21 @@ index 92bf7f3..b348578 100644
  
          // Save withdrawal data
          let withdrawal_json = self
-@@ -125,6 +151,39 @@ impl CommandHandler {
+@@ -125,6 +151,50 @@ impl CommandHandler {
          println!("Association set updated successfully");
          Ok(())
      }
++
++    /// P1.9 Handle the compute-root command: recompute the lean-imt root over a
++    /// commitment list and print it (decimal). Used by the root-auditor service.
++    pub fn handle_compute_root(&self, state_file: String) -> Result<()> {
++        let env = Env::default();
++        env.cost_estimate().budget().reset_unlimited();
++        let state_data = self.file_manager.read_state_file(&state_file)?;
++        let root = self.withdrawal_manager.compute_root(&env, &state_data)?;
++        println!("{}", root);
++        Ok(())
++    }
 +
 +    /// Handle the transfer command (hidden-amount PrivateTransfer witness)
 +    #[allow(clippy::too_many_arguments)]
@@ -182,10 +198,10 @@ index 2aff16c..2c76d4a 100644
 +pub const POOL_ID: &str = "1"; // Shade shielded pool v1
 +pub const CHAIN_ID: &str = "148"; // Stellar (SLIP-44 coin type), testnet domain marker
 diff --git a/privacy-pools/cli/coinutils/src/main.rs b/privacy-pools/cli/coinutils/src/main.rs
-index c920f69..5a0bf9a 100644
+index c920f69..836c018 100644
 --- a/privacy-pools/cli/coinutils/src/main.rs
 +++ b/privacy-pools/cli/coinutils/src/main.rs
-@@ -17,11 +17,46 @@ fn main() {
+@@ -17,11 +17,47 @@ fn main() {
              state_file,
              association_file,
              output,
@@ -222,6 +238,7 @@ index c920f69..5a0bf9a 100644
              association_file,
              label,
          } => command_handler.handle_update_association(association_file, label),
++        Commands::ComputeRoot { state_file } => command_handler.handle_compute_root(state_file),
 +        Commands::Transfer {
 +            coin_file,
 +            state_file,
@@ -246,10 +263,10 @@ index d0c5252..552a253 100644
 +pub use transfer::*;
  pub use withdrawal::*;
 diff --git a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-index f112d23..2c56e23 100644
+index f112d23..ef92ee6 100644
 --- a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
 +++ b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-@@ -110,6 +110,22 @@ impl WithdrawalManager {
+@@ -110,9 +110,41 @@ impl WithdrawalManager {
              association_root,
              label_index,
              label_siblings,
@@ -272,6 +289,25 @@ index f112d23..2c56e23 100644
          })
      }
  
++    /// P1.9 root auditor: recompute the lean-imt state root over an ordered
++    /// commitment list, independent of owning any coin. Returns the root as a
++    /// decimal field-element string (matches the registrar's stateRoot).
++    pub fn compute_root(&self, env: &Env, state_file: &StateFile) -> Result<String> {
++        let mut tree = LeanIMT::new(env, TREE_DEPTH);
++        for (index, commitment_str) in state_file.commitments.iter().enumerate() {
++            let commitment_fr = decimal_string_to_bls_scalar(env, commitment_str).map_err(|e| {
++                CoinUtilsError::InvalidDecimal(format!("Invalid commitment at index {}: {}", index, e))
++            })?;
++            let commitment_bytes = lean_imt::bls_scalar_to_bytes(commitment_fr);
++            tree.insert(commitment_bytes)?;
++        }
++        let root_scalar = lean_imt::bytes_to_bls_scalar(&tree.get_root());
++        Ok(bls_scalar_to_decimal_string(&root_scalar))
++    }
++
+     /// Handle association set processing for withdrawal
+     fn handle_association_set(
+         &self,
 diff --git a/privacy-pools/cli/coinutils/src/types/snark.rs b/privacy-pools/cli/coinutils/src/types/snark.rs
 index eeba96a..bf58d66 100644
 --- a/privacy-pools/cli/coinutils/src/types/snark.rs

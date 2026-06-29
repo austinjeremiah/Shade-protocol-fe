@@ -1,4 +1,12 @@
 #![no_std]
+//! # ShadePool — the canonical Shade settlement contract (a.k.a. ShadeVaultV2).
+//!
+//! P1.1: `shielded_pool` (this contract) is the ONE canonical settlement contract
+//! for Shade. It is the only contract on the active deposit/withdraw/RFQ/CCTP-exit
+//! path and is what every env var (`SHIELDED_POOL_CONTRACT`), doc, API endpoint,
+//! and e2e points at. The legacy `shade_vault` + `commitment_tree` contracts are
+//! DEPRECATED (see their headers) and are not wired into any live flow.
+//!
 //! Shade shielded pool: the integrated ZK withdrawal engine.
 //!
 //! - Holds USDC (SAC) that arrived via CCTP (forwardRecipient = this contract).
