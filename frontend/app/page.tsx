@@ -12,7 +12,7 @@ export default function Home() {
   return (
     <SmoothScroll>
       <CustomCursor />
-      <Navbar />
+      {/* navbar removed */}
       <main>
         <Hero />
         <SectionBlend />

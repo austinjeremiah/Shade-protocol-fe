@@ -15,7 +15,13 @@ export function Hero() {
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8])
 
   return (
-    <section ref={containerRef} className="relative h-screen w-full overflow-hidden bg-[#050505]">
+    <section ref={containerRef} className="relative h-screen w-full overflow-hidden">
+      {/* Split background — left cream, right black, clean divider */}
+      <div className="absolute inset-0 flex">
+        <div className="w-1/2 h-full" style={{ background: "#F5F2EC" }} />
+        <div className="w-1/2 h-full" style={{ background: "#050505", borderLeft: "1px solid rgba(237,234,227,0.18)" }} />
+      </div>
+
       {/* 3D Sphere Background */}
       <div className="absolute inset-0">
         <SentientSphere />
@@ -29,11 +35,8 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
-          <p className="font-mono text-xs tracking-[0.3em] text-muted-foreground mb-2">01 — DISCIPLINE</p>
-          <h2 className="font-sans text-4xl md:text-6xl lg:text-7xl font-light tracking-tight text-balance">
-            SYSTEM
-            <br />
-            <span className="italic">ARCHITECT</span>
+          <h2 className="font-sans text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight" style={{ color: "#1A1820" }}>
+            Shade
           </h2>
         </motion.div>
 
@@ -48,7 +51,8 @@ export function Hero() {
             data-cursor-hover
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="relative px-8 py-4 border border-white/20 rounded-full font-mono text-sm tracking-widest uppercase bg-transparent backdrop-blur-sm hover:bg-white hover:text-black transition-colors duration-500"
+            className="relative px-8 py-4 rounded-full font-mono text-sm tracking-widest uppercase text-white backdrop-blur-md hover:bg-white hover:text-black transition-colors duration-500"
+            style={{ background: "rgba(10,10,12,0.55)", border: "1px solid rgba(237,234,227,0.25)" }}
           >
             Initialize
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#2563eb] rounded-full animate-pulse" />
@@ -62,11 +66,11 @@ export function Hero() {
           transition={{ duration: 1, delay: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
           className="self-end text-right"
         >
-          <p className="font-mono text-xs tracking-[0.3em] text-muted-foreground mb-2">02 — CRAFT</p>
+          <p className="font-mono text-xs tracking-[0.3em] text-muted-foreground mb-2">ZK CROSS-CHAIN PROTOCOL</p>
           <h2 className="font-sans text-4xl md:text-6xl lg:text-7xl font-light tracking-tight text-balance">
-            INTERFACE
+            PRIVATE
             <br />
-            <span className="italic">DESIGNER</span>
+            <span className="italic">SETTLEMENT</span>
           </h2>
         </motion.div>
       </motion.div>

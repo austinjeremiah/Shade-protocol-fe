@@ -71,6 +71,10 @@
     "vaul": "^1.1.2",
     "zod": "3.25.76"
   },
+  "overrides": {
+    "motion-dom": "12.23.23",
+    "motion-utils": "12.23.6"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
