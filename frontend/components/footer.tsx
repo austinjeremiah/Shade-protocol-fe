@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { ArrowUpRight } from "lucide-react"
+import { useLenis } from "lenis/react"
 
 export function Footer() {
   const [time, setTime] = useState("")
   const [isHovered, setIsHovered] = useState(false)
+  const lenis = useLenis()
 
   useEffect(() => {
     const updateTime = () => {
@@ -27,7 +29,8 @@ export function Footer() {
     <footer className="relative">
       {/* Main CTA */}
       <motion.a
-        href="mailto:hello@example.com"
+        href="#"
+        onClick={(e) => { e.preventDefault(); lenis?.scrollTo(0, { duration: 2 }) }}
         data-cursor-hover
         className="relative block overflow-hidden"
         onMouseEnter={() => setIsHovered(true)}
@@ -51,7 +54,7 @@ export function Footer() {
               }}
               transition={{ duration: 0.3 }}
             >
-              Let's <span className="italic">Collaborate</span>
+              Get <span className="italic">Started</span>
             </motion.h2>
 
             <motion.div

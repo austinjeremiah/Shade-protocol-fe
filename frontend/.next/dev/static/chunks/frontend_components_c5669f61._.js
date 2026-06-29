@@ -872,6 +872,466 @@ if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelper
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }
 }),
+"[project]/frontend/components/coverage.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "Coverage",
+    ()=>Coverage
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/render/components/motion/proxy.mjs [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$utils$2f$use$2d$in$2d$view$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/utils/use-in-view.mjs [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+"use client";
+;
+;
+const ease = [
+    0.25,
+    0.46,
+    0.45,
+    0.94
+];
+const nodes = [
+    {
+        label: "Base",
+        pos: "top-[12%] left-[12%]"
+    },
+    {
+        label: "Ethereum",
+        pos: "top-[12%] right-[12%]"
+    },
+    {
+        label: "Arbitrum",
+        pos: "top-1/2 left-[2%] -translate-y-1/2"
+    },
+    {
+        label: "Stellar",
+        pos: "top-1/2 right-[2%] -translate-y-1/2"
+    },
+    {
+        label: "Solana",
+        pos: "bottom-[12%] left-[12%]"
+    },
+    {
+        label: "CCTP",
+        pos: "bottom-[12%] right-[12%]"
+    }
+];
+function Coverage() {
+    _s();
+    const ref = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const inView = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$utils$2f$use$2d$in$2d$view$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useInView"])(ref, {
+        once: true,
+        margin: "-100px"
+    });
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+        ref: ref,
+        className: "relative py-32 px-8 md:px-16 overflow-hidden bg-[#050505]",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "max-w-7xl mx-auto grid md:grid-cols-2 gap-20 items-center",
+            children: [
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                    initial: {
+                        opacity: 0,
+                        y: 40
+                    },
+                    animate: inView ? {
+                        opacity: 1,
+                        y: 0
+                    } : {},
+                    transition: {
+                        duration: 1,
+                        ease
+                    },
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                            className: "font-mono text-xs tracking-[0.3em] text-muted-foreground mb-6",
+                            children: "CROSS-CHAIN COVERAGE"
+                        }, void 0, false, {
+                            fileName: "[project]/frontend/components/coverage.tsx",
+                            lineNumber: 30,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                            className: "font-sans text-4xl md:text-5xl lg:text-6xl font-light tracking-tight mb-8 text-white",
+                            children: [
+                                "One private note,",
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("br", {}, void 0, false, {
+                                    fileName: "[project]/frontend/components/coverage.tsx",
+                                    lineNumber: 33,
+                                    columnNumber: 13
+                                }, this),
+                                "settled ",
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "italic text-white/50",
+                                    children: "everywhere"
+                                }, void 0, false, {
+                                    fileName: "[project]/frontend/components/coverage.tsx",
+                                    lineNumber: 34,
+                                    columnNumber: 21
+                                }, this),
+                                "."
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/frontend/components/coverage.tsx",
+                            lineNumber: 31,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                            className: "text-base md:text-lg leading-relaxed max-w-md mb-10 text-white/40",
+                            children: "USDC burns on the source chain and mints fresh on Stellar — no wrapped tokens. Every settlement resolves inside a zero-knowledge proof. Your balance never touches a public ledger."
+                        }, void 0, false, {
+                            fileName: "[project]/frontend/components/coverage.tsx",
+                            lineNumber: 36,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("a", {
+                            href: "#",
+                            className: "group inline-flex items-center gap-3 font-mono text-sm text-white/60 hover:text-white transition-colors",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "border-b border-white/20 pb-1 group-hover:border-white/50 transition-colors",
+                                    children: "Explore the protocol"
+                                }, void 0, false, {
+                                    fileName: "[project]/frontend/components/coverage.tsx",
+                                    lineNumber: 40,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "transition-transform group-hover:translate-x-1",
+                                    children: "→"
+                                }, void 0, false, {
+                                    fileName: "[project]/frontend/components/coverage.tsx",
+                                    lineNumber: 41,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/frontend/components/coverage.tsx",
+                            lineNumber: 39,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/frontend/components/coverage.tsx",
+                    lineNumber: 25,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                    initial: {
+                        opacity: 0,
+                        scale: 0.9
+                    },
+                    animate: inView ? {
+                        opacity: 1,
+                        scale: 1
+                    } : {},
+                    transition: {
+                        duration: 1,
+                        delay: 0.2,
+                        ease
+                    },
+                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "relative aspect-square w-full max-w-[560px] mx-auto rounded-3xl overflow-hidden",
+                        style: {
+                            background: "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03), rgba(5,5,5,0.5))",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            boxShadow: "0 0 80px rgba(255,255,255,0.02)"
+                        },
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].svg, {
+                                className: "absolute inset-0 w-full h-full",
+                                viewBox: "0 0 100 100",
+                                preserveAspectRatio: "xMidYMid meet",
+                                animate: {
+                                    rotate: 360
+                                },
+                                transition: {
+                                    duration: 60,
+                                    repeat: Infinity,
+                                    ease: "linear"
+                                },
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("circle", {
+                                        cx: "50",
+                                        cy: "50",
+                                        r: "42",
+                                        fill: "none",
+                                        stroke: "rgba(255,255,255,0.12)",
+                                        strokeWidth: "0.2"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 64,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("circle", {
+                                        cx: "50",
+                                        cy: "50",
+                                        r: "42",
+                                        fill: "none",
+                                        stroke: "rgba(255,255,255,0.06)",
+                                        strokeWidth: "0.2",
+                                        strokeDasharray: "0.8 2.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 65,
+                                        columnNumber: 15
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/frontend/components/coverage.tsx",
+                                lineNumber: 57,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].svg, {
+                                className: "absolute inset-0 w-full h-full",
+                                viewBox: "0 0 100 100",
+                                preserveAspectRatio: "xMidYMid meet",
+                                animate: {
+                                    rotate: -360
+                                },
+                                transition: {
+                                    duration: 45,
+                                    repeat: Infinity,
+                                    ease: "linear"
+                                },
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("circle", {
+                                        cx: "50",
+                                        cy: "50",
+                                        r: "27",
+                                        fill: "none",
+                                        stroke: "rgba(255,255,255,0.1)",
+                                        strokeWidth: "0.2",
+                                        strokeDasharray: "1.5 1.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 76,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
+                                        x1: "50",
+                                        y1: "8",
+                                        x2: "50",
+                                        y2: "92",
+                                        stroke: "rgba(255,255,255,0.06)",
+                                        strokeWidth: "0.15",
+                                        strokeDasharray: "1.5 1.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 77,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
+                                        x1: "8",
+                                        y1: "50",
+                                        x2: "92",
+                                        y2: "50",
+                                        stroke: "rgba(255,255,255,0.06)",
+                                        strokeWidth: "0.15",
+                                        strokeDasharray: "1.5 1.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 78,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
+                                        x1: "20",
+                                        y1: "20",
+                                        x2: "80",
+                                        y2: "80",
+                                        stroke: "rgba(255,255,255,0.04)",
+                                        strokeWidth: "0.15",
+                                        strokeDasharray: "1.5 1.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 79,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
+                                        x1: "80",
+                                        y1: "20",
+                                        x2: "20",
+                                        y2: "80",
+                                        stroke: "rgba(255,255,255,0.04)",
+                                        strokeWidth: "0.15",
+                                        strokeDasharray: "1.5 1.5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 80,
+                                        columnNumber: 15
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/frontend/components/coverage.tsx",
+                                lineNumber: 69,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                                className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full",
+                                style: {
+                                    width: "30%",
+                                    height: "30%",
+                                    background: "radial-gradient(circle at 50% 40%, #1a1a1a, #050505)",
+                                    border: "1px solid rgba(255,255,255,0.15)"
+                                },
+                                animate: {
+                                    boxShadow: [
+                                        "0 0 30px rgba(255,255,255,0.05)",
+                                        "0 0 60px rgba(255,255,255,0.1)",
+                                        "0 0 30px rgba(255,255,255,0.05)"
+                                    ]
+                                },
+                                transition: {
+                                    duration: 3,
+                                    repeat: Infinity,
+                                    ease: "easeInOut"
+                                },
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                                        className: "w-10 h-10 rounded-full flex items-center justify-center mb-2",
+                                        style: {
+                                            background: "linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05))",
+                                            border: "1px solid rgba(255,255,255,0.1)"
+                                        },
+                                        animate: {
+                                            boxShadow: [
+                                                "0 0 12px rgba(255,255,255,0.1)",
+                                                "0 0 24px rgba(255,255,255,0.2)",
+                                                "0 0 12px rgba(255,255,255,0.1)"
+                                            ]
+                                        },
+                                        transition: {
+                                            duration: 3,
+                                            repeat: Infinity,
+                                            ease: "easeInOut"
+                                        },
+                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
+                                            width: "16",
+                                            height: "16",
+                                            viewBox: "0 0 28 28",
+                                            fill: "none",
+                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                                                d: "M14 0L17.5 10.5L28 14L17.5 17.5L14 28L10.5 17.5L0 14L10.5 10.5L14 0Z",
+                                                fill: "white",
+                                                fillOpacity: "0.6"
+                                            }, void 0, false, {
+                                                fileName: "[project]/frontend/components/coverage.tsx",
+                                                lineNumber: 114,
+                                                columnNumber: 19
+                                            }, this)
+                                        }, void 0, false, {
+                                            fileName: "[project]/frontend/components/coverage.tsx",
+                                            lineNumber: 113,
+                                            columnNumber: 17
+                                        }, this)
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 101,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "text-sm font-medium text-white/80",
+                                        children: "Shade"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 117,
+                                        columnNumber: 15
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "text-[10px] text-white/30",
+                                        children: "ZK core"
+                                    }, void 0, false, {
+                                        fileName: "[project]/frontend/components/coverage.tsx",
+                                        lineNumber: 118,
+                                        columnNumber: 15
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/frontend/components/coverage.tsx",
+                                lineNumber: 84,
+                                columnNumber: 13
+                            }, this),
+                            nodes.map((node, i)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                                    className: `absolute ${node.pos} flex items-center gap-2 px-4 py-2.5 rounded-full`,
+                                    style: {
+                                        background: "rgba(255,255,255,0.04)",
+                                        border: "1px solid rgba(255,255,255,0.1)",
+                                        backdropFilter: "blur(8px)"
+                                    },
+                                    initial: {
+                                        opacity: 0,
+                                        scale: 0.8
+                                    },
+                                    animate: inView ? {
+                                        opacity: 1,
+                                        scale: 1
+                                    } : {},
+                                    transition: {
+                                        duration: 0.6,
+                                        delay: 0.4 + i * 0.08,
+                                        ease
+                                    },
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                            className: "w-1.5 h-1.5 rounded-full bg-white/40"
+                                        }, void 0, false, {
+                                            fileName: "[project]/frontend/components/coverage.tsx",
+                                            lineNumber: 135,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                            className: "text-[13px] font-medium whitespace-nowrap text-white/60",
+                                            children: node.label
+                                        }, void 0, false, {
+                                            fileName: "[project]/frontend/components/coverage.tsx",
+                                            lineNumber: 136,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, node.label, true, {
+                                    fileName: "[project]/frontend/components/coverage.tsx",
+                                    lineNumber: 123,
+                                    columnNumber: 15
+                                }, this))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/frontend/components/coverage.tsx",
+                        lineNumber: 51,
+                        columnNumber: 11
+                    }, this)
+                }, void 0, false, {
+                    fileName: "[project]/frontend/components/coverage.tsx",
+                    lineNumber: 46,
+                    columnNumber: 9
+                }, this)
+            ]
+        }, void 0, true, {
+            fileName: "[project]/frontend/components/coverage.tsx",
+            lineNumber: 23,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/frontend/components/coverage.tsx",
+        lineNumber: 22,
+        columnNumber: 5
+    }, this);
+}
+_s(Coverage, "O7qYEn3iCrBBWRAefWku+E/MdDM=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$utils$2f$use$2d$in$2d$view$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useInView"]
+    ];
+});
+_c = Coverage;
+var _c;
+__turbopack_context__.k.register(_c, "Coverage");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
 "[project]/frontend/components/works.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
@@ -882,78 +1342,62 @@ __turbopack_context__.s([
 var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/render/components/motion/proxy.mjs [app-client] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$motion$2d$value$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/value/use-motion-value.mjs [app-client] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$spring$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/value/use-spring.mjs [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$components$2f$AnimatePresence$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/frontend/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs [app-client] (ecmascript)");
 ;
 var _s = __turbopack_context__.k.signature();
 "use client";
 ;
 ;
-const projects = [
+const features = [
     {
-        title: "Neural Interface",
+        title: "Shade Shield",
         tags: [
-            "Next.js",
-            "OpenAI",
-            "WebGL"
+            "Bridge",
+            "CCTP",
+            "Stellar"
         ],
-        image: "/abstract-neural-network-visualization-dark-theme.jpg",
-        year: "2024"
+        description: "Bring USDC in from Base, Ethereum, Arbitrum, or Solana. It burns on the source chain and mints fresh on Stellar. Your private note is generated client-side before anything is signed.",
+        status: "Live"
     },
     {
-        title: "Quantum Dashboard",
+        title: "Shade RFQ",
         tags: [
-            "React",
-            "D3.js",
-            "Python"
+            "Quotes",
+            "Solvers",
+            "Intent"
         ],
-        image: "/futuristic-data-dashboard-dark-minimal.jpg",
-        year: "2024"
+        description: "Request a private quote from solvers without revealing your balance. Compare net output, fees, and expiry — accept the best one. If a solver defaults, your note stays untouched.",
+        status: "Live"
     },
     {
-        title: "Synthetic Memory",
+        title: "Shade Remit",
         tags: [
-            "TypeScript",
-            "LangChain",
-            "Vector DB"
+            "Payout",
+            "Anchor",
+            "Fiat"
         ],
-        image: "/abstract-memory-storage-visualization.jpg",
-        year: "2023"
+        description: "Cash out to a bank, mobile wallet, or cash pickup. Payouts route through licensed anchor partners. We always tell you what's real vs. simulated, right on the control.",
+        status: "Partner-gated"
     },
     {
-        title: "Echo Protocol",
+        title: "Shade View",
         tags: [
-            "Rust",
-            "WebAssembly",
-            "Audio"
+            "Disclosure",
+            "Receipt",
+            "Compliance"
         ],
-        image: "/sound-wave-visualization-dark-theme.jpg",
-        year: "2023"
+        description: "Generate a signed disclosure receipt only when you choose to. Pick a date range, select which transactions to include. Nothing is shared until you decide to share it.",
+        status: "Live"
     }
 ];
 function Works() {
     _s();
-    const [hoveredIndex, setHoveredIndex] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const containerRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
-    const mouseX = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$motion$2d$value$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMotionValue"])(0);
-    const mouseY = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$motion$2d$value$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMotionValue"])(0);
-    const springX = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$spring$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSpring"])(mouseX, {
-        stiffness: 150,
-        damping: 20
-    });
-    const springY = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$spring$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSpring"])(mouseY, {
-        stiffness: 150,
-        damping: 20
-    });
-    const handleMouseMove = (e)=>{
-        if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            mouseX.set(e.clientX - rect.left);
-            mouseY.set(e.clientY - rect.top);
-        }
+    const [openIndex, setOpenIndex] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const toggle = (index)=>{
+        setOpenIndex(openIndex === index ? null : index);
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
-        className: "relative py-32 px-8 md:px-12 md:py-24",
+        className: "relative py-32 px-8 md:px-12 md:py-24 bg-[#050505]",
         children: [
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
                 initial: {
@@ -974,35 +1418,32 @@ function Works() {
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                         className: "font-mono text-xs tracking-[0.3em] text-muted-foreground mb-4",
-                        children: "04 — SELECTED WORKS"
+                        children: "04 — PRODUCT SURFACE"
                     }, void 0, false, {
                         fileName: "[project]/frontend/components/works.tsx",
-                        lineNumber: 63,
+                        lineNumber: 50,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
                         className: "font-sans text-3xl md:text-5xl font-light italic",
-                        children: "The Distortion Gallery"
+                        children: "What Shade Does"
                     }, void 0, false, {
                         fileName: "[project]/frontend/components/works.tsx",
-                        lineNumber: 64,
+                        lineNumber: 51,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/frontend/components/works.tsx",
-                lineNumber: 56,
+                lineNumber: 43,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                ref: containerRef,
-                onMouseMove: handleMouseMove,
-                className: "relative",
                 children: [
-                    projects.map((project, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                    features.map((feature, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
                             initial: {
                                 opacity: 0,
-                                y: 40
+                                y: 30
                             },
                             whileInView: {
                                 opacity: 1,
@@ -1012,145 +1453,177 @@ function Works() {
                                 once: true
                             },
                             transition: {
-                                duration: 0.8,
-                                delay: index * 0.1
+                                duration: 0.6,
+                                delay: index * 0.08
                             },
-                            className: "relative border-t border-white/10 py-8 md:py-12",
-                            onMouseEnter: ()=>setHoveredIndex(index),
-                            onMouseLeave: ()=>setHoveredIndex(null),
-                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("a", {
-                                href: "#",
-                                "data-cursor-hover": true,
-                                className: "group flex flex-col md:flex-row md:items-center justify-between gap-4",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                        className: "font-mono text-xs text-muted-foreground tracking-widest order-1 md:order-none",
-                                        children: project.year
-                                    }, void 0, false, {
-                                        fileName: "[project]/frontend/components/works.tsx",
-                                        lineNumber: 86,
-                                        columnNumber: 15
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].h3, {
-                                        className: "font-sans text-4xl md:text-6xl lg:text-7xl font-light tracking-tight group-hover:text-white/70 transition-colors duration-300 flex-1",
+                            className: "border-t border-white/10 cursor-pointer",
+                            onMouseEnter: ()=>setOpenIndex(index),
+                            onMouseLeave: ()=>setOpenIndex(null),
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "py-8 md:py-10 flex flex-col md:flex-row md:items-center justify-between gap-4",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "flex items-center gap-6 flex-1",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                    className: "font-mono text-xs text-white/20 tracking-widest hidden md:block",
+                                                    children: [
+                                                        "0",
+                                                        index + 1
+                                                    ]
+                                                }, void 0, true, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 69,
+                                                    columnNumber: 17
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].h3, {
+                                                    className: "font-sans text-3xl md:text-5xl lg:text-6xl font-light tracking-tight transition-colors duration-300",
+                                                    animate: {
+                                                        color: openIndex === index ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)"
+                                                    },
+                                                    children: feature.title
+                                                }, void 0, false, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 72,
+                                                    columnNumber: 17
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/frontend/components/works.tsx",
+                                            lineNumber: 68,
+                                            columnNumber: 15
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "flex items-center gap-4",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                    className: "font-mono text-[10px] tracking-wider px-3 py-1 border border-white/10 rounded-full text-white/30",
+                                                    children: feature.status
+                                                }, void 0, false, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 80,
+                                                    columnNumber: 17
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].span, {
+                                                    className: "text-white/30 text-xl",
+                                                    animate: {
+                                                        rotate: openIndex === index ? 180 : 0
+                                                    },
+                                                    transition: {
+                                                        duration: 0.3
+                                                    },
+                                                    children: "↓"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 83,
+                                                    columnNumber: 17
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/frontend/components/works.tsx",
+                                            lineNumber: 79,
+                                            columnNumber: 15
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/frontend/components/works.tsx",
+                                    lineNumber: 67,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$components$2f$AnimatePresence$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["AnimatePresence"], {
+                                    children: openIndex === index && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
+                                        initial: {
+                                            height: 0,
+                                            opacity: 0
+                                        },
                                         animate: {
-                                            x: hoveredIndex === index ? 20 : 0
+                                            height: "auto",
+                                            opacity: 1
+                                        },
+                                        exit: {
+                                            height: 0,
+                                            opacity: 0
                                         },
                                         transition: {
-                                            type: "spring",
-                                            stiffness: 300,
-                                            damping: 20
+                                            duration: 0.4,
+                                            ease: [
+                                                0.25,
+                                                0.46,
+                                                0.45,
+                                                0.94
+                                            ]
                                         },
-                                        children: project.title
+                                        className: "overflow-hidden",
+                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "pb-10 md:pl-16 md:pr-20",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                    className: "text-base md:text-lg leading-relaxed text-white/40 max-w-2xl mb-6",
+                                                    children: feature.description
+                                                }, void 0, false, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 103,
+                                                    columnNumber: 21
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                    className: "flex gap-2 flex-wrap",
+                                                    children: feature.tags.map((tag)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            className: "font-mono text-[10px] tracking-wider px-3 py-1.5 border border-white/10 rounded-full text-white/25",
+                                                            children: tag
+                                                        }, tag, false, {
+                                                            fileName: "[project]/frontend/components/works.tsx",
+                                                            lineNumber: 108,
+                                                            columnNumber: 25
+                                                        }, this))
+                                                }, void 0, false, {
+                                                    fileName: "[project]/frontend/components/works.tsx",
+                                                    lineNumber: 106,
+                                                    columnNumber: 21
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/frontend/components/works.tsx",
+                                            lineNumber: 102,
+                                            columnNumber: 19
+                                        }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/frontend/components/works.tsx",
-                                        lineNumber: 91,
-                                        columnNumber: 15
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "flex gap-2 flex-wrap order-2 md:order-none",
-                                        children: project.tags.map((tag)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                className: "font-mono text-[10px] tracking-wider px-3 py-1 border border-white/20 rounded-full text-muted-foreground",
-                                                children: tag
-                                            }, tag, false, {
-                                                fileName: "[project]/frontend/components/works.tsx",
-                                                lineNumber: 104,
-                                                columnNumber: 19
-                                            }, this))
-                                    }, void 0, false, {
-                                        fileName: "[project]/frontend/components/works.tsx",
-                                        lineNumber: 102,
-                                        columnNumber: 15
+                                        lineNumber: 95,
+                                        columnNumber: 17
                                     }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/frontend/components/works.tsx",
-                                lineNumber: 80,
-                                columnNumber: 13
-                            }, this)
-                        }, project.title, false, {
+                                }, void 0, false, {
+                                    fileName: "[project]/frontend/components/works.tsx",
+                                    lineNumber: 93,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, feature.title, true, {
                             fileName: "[project]/frontend/components/works.tsx",
-                            lineNumber: 70,
+                            lineNumber: 57,
                             columnNumber: 11
                         }, this)),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].div, {
-                        className: "absolute pointer-events-none z-50 w-64 h-40 md:w-80 md:h-48 overflow-hidden rounded-lg",
-                        style: {
-                            x: springX,
-                            y: springY,
-                            translateX: "-50%",
-                            translateY: "-320%"
-                        },
-                        animate: {
-                            opacity: hoveredIndex !== null ? 1 : 0,
-                            scale: hoveredIndex !== null ? 1 : 0.8
-                        },
-                        transition: {
-                            duration: 0.2
-                        },
-                        children: [
-                            hoveredIndex !== null && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$render$2f$components$2f$motion$2f$proxy$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["motion"].img, {
-                                src: projects[hoveredIndex].image,
-                                alt: projects[hoveredIndex].title,
-                                className: "w-full h-full object-cover",
-                                initial: {
-                                    scale: 1.2
-                                },
-                                animate: {
-                                    scale: 1
-                                },
-                                transition: {
-                                    duration: 0.4
-                                },
-                                style: {
-                                    filter: "grayscale(50%) contrast(1.1)"
-                                }
-                            }, void 0, false, {
-                                fileName: "[project]/frontend/components/works.tsx",
-                                lineNumber: 132,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "absolute inset-0 bg-[#2563eb]/10 mix-blend-overlay"
-                            }, void 0, false, {
-                                fileName: "[project]/frontend/components/works.tsx",
-                                lineNumber: 145,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "border-t border-white/10"
+                    }, void 0, false, {
                         fileName: "[project]/frontend/components/works.tsx",
-                        lineNumber: 117,
+                        lineNumber: 124,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/frontend/components/works.tsx",
-                lineNumber: 68,
-                columnNumber: 7
-            }, this),
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "border-t border-white/10"
-            }, void 0, false, {
-                fileName: "[project]/frontend/components/works.tsx",
-                lineNumber: 150,
+                lineNumber: 55,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/frontend/components/works.tsx",
-        lineNumber: 54,
+        lineNumber: 41,
         columnNumber: 5
     }, this);
 }
-_s(Works, "q+dC0Ppx8csCEgUU+CVzykUvgws=", false, function() {
-    return [
-        __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$motion$2d$value$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMotionValue"],
-        __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$motion$2d$value$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMotionValue"],
-        __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$spring$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSpring"],
-        __TURBOPACK__imported__module__$5b$project$5d2f$frontend$2f$node_modules$2f$framer$2d$motion$2f$dist$2f$es$2f$value$2f$use$2d$spring$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSpring"]
-    ];
-});
+_s(Works, "7z1SfW1ag/kVV/D8SOtFgmPOJ8o=");
 _c = Works;
 var _c;
 __turbopack_context__.k.register(_c, "Works");
@@ -1713,4 +2186,4 @@ if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelper
 }),
 ]);
 
-//# sourceMappingURL=frontend_components_1eb85703._.js.map
+//# sourceMappingURL=frontend_components_c5669f61._.js.map

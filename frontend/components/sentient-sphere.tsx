@@ -91,13 +91,13 @@ function Sphere() {
     varying float vDisplacement;
     
     void main() {
-      float intensity = 0.3 + vDisplacement * 2.0;
+      float intensity = 0.5 + vDisplacement * 2.5;
       vec3 color = vec3(intensity);
-      
+
       float line = smoothstep(0.0, 0.02, abs(fract(vUv.x * 20.0) - 0.5));
       line *= smoothstep(0.0, 0.02, abs(fract(vUv.y * 20.0) - 0.5));
-      
-      gl_FragColor = vec4(color * (1.0 - line * 0.5), 0.6);
+
+      gl_FragColor = vec4(color * (1.0 - line * 0.5), 0.85);
     }
   `
 

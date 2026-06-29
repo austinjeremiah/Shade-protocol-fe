@@ -21,12 +21,14 @@ export function Hero() {
       <div className="absolute inset-0 flex">
         <motion.div
           className="h-full"
+          initial={{ width: "50%" }}
           style={{ background: "#F5F2EC" }}
           animate={{ width: isFlipped ? "0%" : "50%" }}
           transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
         />
         <motion.div
           className="h-full"
+          initial={{ width: "50%" }}
           style={{ background: "#050505", borderLeft: "1px solid rgba(237,234,227,0.18)" }}
           animate={{ width: isFlipped ? "100%" : "50%" }}
           transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
@@ -46,15 +48,19 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
-          <motion.h2
-            className="font-sans text-5xl md:text-7xl lg:text-8xl font-light tracking-tight"
-            animate={{ color: isFlipped ? "#EDEAE3" : "#1A1820" }}
-            transition={{ duration: 0.6, ease: [0.76, 0, 0.24, 1] }}
-          >
-            SHADE
-            <br />
-            <span className="italic text-3xl md:text-5xl lg:text-6xl" style={{ marginTop: "-0.15em", display: "block" }}>PROTOCOL</span>
-          </motion.h2>
+          <div className="flex flex-col ml-12 md:ml-24">
+            {"SHADE".split("").map((letter, i) => (
+              <motion.span
+                key={i}
+                className="font-sans text-5xl md:text-7xl lg:text-8xl font-light tracking-tight leading-[0.85]"
+                style={{ WebkitTextStroke: "1px currentColor", paintOrder: "stroke fill" }}
+                animate={{ color: isFlipped ? "#EDEAE3" : "#1A1820" }}
+                transition={{ duration: 0.6, ease: [0.76, 0, 0.24, 1] }}
+              >
+                {letter}
+              </motion.span>
+            ))}
+          </div>
         </motion.div>
 
         {/* Center Button */}
@@ -73,7 +79,7 @@ export function Hero() {
             className="relative px-8 py-4 rounded-full font-mono text-sm tracking-widest uppercase text-white backdrop-blur-md transition-colors duration-500"
             style={{ background: "rgba(10,10,12,0.55)", border: "1px solid rgba(237,234,227,0.25)" }}
           >
-            Initialize
+            Connect
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#2563eb] rounded-full animate-pulse" />
           </motion.button>
         </motion.div>
@@ -86,7 +92,7 @@ export function Hero() {
           className="self-end text-right"
         >
           <p className="font-mono text-xs tracking-[0.3em] text-muted-foreground mb-2">ZK CROSS-CHAIN PROTOCOL</p>
-          <h2 className="font-sans text-4xl md:text-6xl lg:text-7xl font-light tracking-tight text-balance">
+          <h2 className="font-sans text-4xl md:text-6xl lg:text-7xl font-light tracking-tight text-balance" style={{ color: "#EDEAE3" }}>
             PRIVATE
             <br />
             <span className="italic">SETTLEMENT</span>

@@ -76,6 +76,7 @@
 }
 
 @theme inline {
+  --color-white: #EDEAE3;
   --font-sans: "Playfair Display", "Georgia", serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", monospace;
   --color-background: var(--background);
