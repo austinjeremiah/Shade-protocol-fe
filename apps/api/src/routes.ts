@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { LOCKED_CCTP, usdc6ToStellar7, validateInboundRoute } from "@shade/cctp-utils";
+import { LOCKED_CCTP, usdc6ToStellar7, validateInboundRoute, stellarContractToBytes32, encodeStellarForwardHook, FINALITY_THRESHOLD_CONFIRMED } from "@shade/cctp-utils";
 import { generateNotePreimage, poseidonCommitment } from "@shade/note-crypto";
 import { hashJson, deterministicId } from "@shade/shared-types/ids";
 import { intentSchema, quoteSchema } from "@shade/rfq-types";
@@ -32,6 +32,7 @@ import {
   addWrapperSchema,
   authNonceSchema,
   authVerifySchema,
+  burnSubmittedSchema,
   cctpExitSchema,
   encryptedVaultEnvelopeSchema,
   fillSchema,
@@ -44,6 +45,7 @@ import {
   requestQuotesSchema,
   settlementSchema,
   updateMeSchema,
+  userDepositPrepareSchema,
   withdrawalSchema
 } from "./schemas.js";
 
@@ -165,7 +167,10 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   app.get("/v1/me/cctp-exits", async (request) => ({ exits: await store.listByUser("cctp_exits", await authedUser(store, request)) }));
   app.get("/v1/me/note-backups", async (request) => ({ backups: await store.listByUser("encrypted_note_backups", await authedUser(store, request)) }));
 
-  app.post("/v1/deposits/prepare", async (request) => {
+  // DEV-ONLY legacy deposit prepare (builds the note server-side — the old model).
+  // The canonical user path is POST /v1/deposits/prepare (client-side note, user-
+  // signed burn) below. Kept for diagnostics behind the dev namespace.
+  app.post("/v1/dev/deposits/prepare-legacy", async (request) => {
     const body = prepareDepositSchema.parse(request.body);
     const idempotencyKey = idem(request);
     validateInboundRoute({
@@ -204,6 +209,69 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const userId = await authedUserOptional(store, request);
     if (userId) { await store.setRowUser("cctp_deposits", "deposit_id", depositId, userId); await store.logActivity(userId, { event_type: "deposit.prepare", entity_type: "deposit", entity_id: depositId }); }
     return { deposit_id: depositId, commitment, amount_usdc_7dp: amount7.toString() };
+  });
+
+  // ---- PHASE 6: user-signed CCTP deposit (no backend EVM key) ----
+  // Returns approval + burn tx requests for the USER's wallet to sign. The backend
+  // never burns USDC itself. Gated on: wallet owned, vault owned + backup verified +
+  // recovery policy sufficient, supported chain, positive amount, root healthy.
+  app.post("/v1/deposits/prepare", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    const body = userDepositPrepareSchema.parse(request.body);
+    const idempotencyKey = idem(request);
+    if (body.source_chain !== "arbitrum-sepolia") { const e = new Error("unsupported source_chain") as Error & { statusCode: number }; e.statusCode = 400; throw e; }
+    if (BigInt(body.amount_usdc_6dp) <= 0n) { const e = new Error("amount must be positive") as Error & { statusCode: number }; e.statusCode = 400; throw e; }
+    if (!(await store.userOwnsWallet(auth.userId, body.source_wallet_address))) { const e = new Error("source wallet not linked to user") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    if (!(await store.userOwnsVault(auth.userId, body.vault_id))) { const e = new Error("vault not owned by user") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    const ready = await store.vaultDepositReady(auth.userId, body.vault_id);
+    if (!ready || !ready.ready) { const e = new Error(`vault not deposit-ready (backup=${ready?.backup_status}, policy=${ready?.recovery_policy_status})`) as Error & { statusCode: number }; e.statusCode = 409; throw e; }
+    await assertRootHealthy(store);
+
+    const amount6 = BigInt(body.amount_usdc_6dp);
+    const amount7Max = usdc6ToStellar7(amount6);
+    const usdcAddress = process.env.ARB_SEPOLIA_USDC_ADDRESS ?? LOCKED_CCTP.arbitrumSepoliaUsdc;
+    const tokenMessenger = process.env.ARB_SEPOLIA_CCTP_TOKEN_MESSENGER ?? LOCKED_CCTP.arbitrumSepoliaTokenMessenger;
+    const forwarder = process.env.STELLAR_CCTP_FORWARDER_CONTRACT ?? LOCKED_CCTP.stellarCctpForwarder;
+    const pool = process.env.SHIELDED_POOL_CONTRACT ?? "";
+    const mintRecipient = stellarContractToBytes32(forwarder);
+    const destinationCaller = stellarContractToBytes32(forwarder);
+    const hookData = encodeStellarForwardHook(pool);
+    const maxFee = (amount6 / 1000n > 0n ? amount6 / 1000n : 1n).toString();
+    const depositId = deterministicId({ namespace: "udep", parts: [idempotencyKey, body.commitment] });
+    await store.createUserDeposit({
+      depositId, idempotencyKey, userId: auth.userId, sourceChain: body.source_chain, sourceWalletAddress: body.source_wallet_address,
+      vaultId: body.vault_id, sourceDomain: LOCKED_CCTP.arbitrumSepoliaDomain, destinationDomain: LOCKED_CCTP.stellarDomain,
+      assetId: usdcAddress, amount6: amount6.toString(), amount7Max: amount7Max.toString(), commitment: body.commitment,
+      encryptedNotePayloadHash: body.encrypted_note_payload_hash, policyId: body.policy_id
+    });
+    await store.logActivity(auth.userId, { event_type: "deposit.prepare", entity_type: "deposit", entity_id: depositId });
+    return {
+      deposit_id: depositId,
+      approval_tx_request: { to: usdcAddress, abi: "function approve(address,uint256)", args: [tokenMessenger, amount6.toString()] },
+      burn_tx_request: { to: tokenMessenger, abi: "function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)", args: [amount6.toString(), LOCKED_CCTP.stellarDomain, mintRecipient, usdcAddress, destinationCaller, maxFee, FINALITY_THRESHOLD_CONFIRMED, hookData] },
+      usdc_address: usdcAddress, token_messenger_address: tokenMessenger, destination_domain: LOCKED_CCTP.stellarDomain,
+      mint_recipient: mintRecipient, destination_caller: destinationCaller, hook_data: hookData, forward_recipient: pool,
+      max_fee: maxFee, finality_threshold: FINALITY_THRESHOLD_CONFIRMED, expected_amount_7dp_max: amount7Max.toString()
+    };
+  });
+
+  // The user submits the burn tx hash; the relayer validates it against the deposit
+  // before doing the Stellar side. No server EVM key was used to burn.
+  app.post("/v1/deposits/:deposit_id/burn-submitted", async (request, reply) => {
+    const auth = await requirePrivyUser(store, request);
+    const depositId = (request.params as { deposit_id: string }).deposit_id;
+    const body = burnSubmittedSchema.parse(request.body);
+    const dep = await store.getDepositForUser(auth.userId, depositId);
+    if (!dep) { reply.code(404); return { error: "deposit not found" }; }
+    if (String(dep.source_wallet_address).toLowerCase() !== body.source_wallet_address.toLowerCase()) { reply.code(403); return { error: "wallet mismatch" }; }
+    await store.setDepositBurnTx(depositId, body.burn_tx_hash);
+    const job = await queue.enqueue("relayer", "CCTP_INBOUND_AFTER_USER_BURN", {
+      deposit_id: depositId, burn_tx_hash: body.burn_tx_hash, source_wallet_address: body.source_wallet_address,
+      expected_amount6: dep.amount_usdc_6dp, commitment: dep.commitment, vault_id: dep.vault_id,
+      encryptedNotePayloadHashHex: dep.encrypted_note_payload_hash, policyIdHex: dep.policy_id
+    }, `user-burn:${depositId}`);
+    await store.logActivity(auth.userId, { event_type: "deposit.burn_submitted", entity_type: "deposit", entity_id: depositId, tx_hash: body.burn_tx_hash });
+    return { deposit_id: depositId, job_id: job.job_id, status: "queued" };
   });
 
   app.get("/v1/deposits/:deposit_id", async (request) => store.getById("cctp_deposits", "deposit_id", (request.params as { deposit_id: string }).deposit_id));

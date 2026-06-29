@@ -141,3 +141,22 @@ export const addWrapperSchema = z.object({
   // updated full envelope (the client re-encrypts/re-wraps client-side and uploads)
   envelope: encryptedVaultEnvelopeSchema
 });
+
+// ---- PHASE 6 user-signed CCTP deposit ----
+
+// The user's wallet signs the burn; the backend never holds the user EVM key.
+export const userDepositPrepareSchema = z.object({
+  amount_usdc_6dp: z.string().regex(/^\d+$/),
+  source_chain: z.string().min(1),                 // "arbitrum-sepolia"
+  source_wallet_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  vault_id: z.string().min(1),
+  commitment: z.string().min(1),                   // protocol (Poseidon) commitment from the prover
+  encrypted_note_payload_hash: z.string().min(1),
+  policy_id: z.string().min(1)
+});
+
+export const burnSubmittedSchema = z.object({
+  burn_tx_hash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  source_chain: z.string().min(1),
+  source_wallet_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/)
+});

@@ -80,6 +80,34 @@ export class Store {
     }
   }
 
+  // ---- PHASE 6 user-signed deposit ----
+
+  async createUserDeposit(input: {
+    depositId: string; idempotencyKey: string; userId: string; sourceChain: string; sourceWalletAddress: string;
+    vaultId: string; sourceDomain: number; destinationDomain: number; assetId: string; amount6: string; amount7Max: string;
+    commitment: string; encryptedNotePayloadHash: string; policyId: string;
+  }): Promise<void> {
+    await this.pool.query(
+      `insert into cctp_deposits(deposit_id, idempotency_key, user_id, source_chain, source_wallet_address, vault_id,
+        source_domain, destination_domain, asset_id, amount_usdc_6dp, amount_usdc_7dp, commitment,
+        encrypted_note_payload_hash, policy_id, state)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'prepared')
+       on conflict (deposit_id) do nothing`,
+      [input.depositId, input.idempotencyKey, input.userId, input.sourceChain, input.sourceWalletAddress, input.vaultId,
+       input.sourceDomain, input.destinationDomain, input.assetId, input.amount6, input.amount7Max, input.commitment,
+       input.encryptedNotePayloadHash, input.policyId]
+    );
+  }
+
+  async getDepositForUser(userId: string, depositId: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool.query("select * from cctp_deposits where deposit_id=$1 and user_id=$2", [depositId, userId]);
+    return rows[0] ?? null;
+  }
+
+  async setDepositBurnTx(depositId: string, burnTxHash: string): Promise<void> {
+    await this.pool.query("update cctp_deposits set source_tx_hash=$2, state='burn_submitted', updated_at=now() where deposit_id=$1", [depositId, burnTxHash]);
+  }
+
   async getById<T>(table: string, idColumn: string, id: string): Promise<T | null> {
     const allowedTables = new Set([
       "cctp_deposits",

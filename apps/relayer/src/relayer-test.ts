@@ -59,6 +59,7 @@ try {
   check("invalid relayer job marked failed (not crashed)", badStatus === "failed" || badStatus === "failed_retry", `status=${badStatus}`);
 
   if (process.env.RELAYER_LIVE === "1") {
+    process.env.ENABLE_OPERATOR_TESTNET_DEPOSIT = "true"; // dev/test composite inbound
     const env = loadEnv();
     const pool = env.SHIELDED_POOL_CONTRACT;
     const coin = generateCoin("relayer_inbound", `${SCRATCH}/relayer_inbound.json`);
