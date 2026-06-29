@@ -11,7 +11,7 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
     crypto::bls12_381::{Fr, G1Affine, G2Affine, G1_SERIALIZED_SIZE, G2_SERIALIZED_SIZE},
-    vec, Bytes, BytesN, Env, U256, Vec,
+    panic_with_error, vec, Address, Bytes, BytesN, Env, U256, Vec,
 };
 
 #[contracterror]
@@ -22,11 +22,14 @@ pub enum VerifierError {
     AlreadyInitialized = 2,
     MalformedVerifyingKey = 3,
     MalformedProof = 4,
+    Frozen = 5,
 }
 
 #[contracttype]
 enum DataKey {
     Vk,
+    Admin,
+    Frozen,
 }
 
 #[contract]
@@ -92,13 +95,35 @@ fn public_from_bytes(env: &Env, bytes: &Bytes) -> Vec<Fr> {
 #[contractimpl]
 impl ProofVerifier {
     /// One verifier per circuit; vk_bytes is the circom2soroban-encoded verifying key.
-    pub fn __constructor(env: Env, vk_bytes: Bytes) {
+    /// `admin` is the only account allowed to rotate the vk (until frozen).
+    pub fn __constructor(env: Env, admin: Address, vk_bytes: Bytes) {
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Vk, &vk_bytes);
+        env.storage().instance().set(&DataKey::Frozen, &false);
+    }
+
+    /// Rotate the verifying key. Admin-only, and forbidden once frozen.
+    /// (Testnet: admin-gated rotation. Production: call `freeze_vk` to make immutable.)
+    pub fn set_vk(env: Env, vk_bytes: Bytes) {
+        if env.storage().instance().get(&DataKey::Frozen).unwrap_or(false) {
+            panic_with_error!(&env, VerifierError::Frozen);
+        }
+        Self::require_admin(&env);
         env.storage().instance().set(&DataKey::Vk, &vk_bytes);
     }
 
-    /// Allow re-pointing the vk (admin-less testnet helper; guard in production).
-    pub fn set_vk(env: Env, vk_bytes: Bytes) {
-        env.storage().instance().set(&DataKey::Vk, &vk_bytes);
+    /// Permanently make the vk immutable (production hardening). Admin-only, one-way.
+    pub fn freeze_vk(env: Env) {
+        Self::require_admin(&env);
+        env.storage().instance().set(&DataKey::Frozen, &true);
+    }
+
+    pub fn is_frozen(env: Env) -> bool {
+        env.storage().instance().get(&DataKey::Frozen).unwrap_or(false)
+    }
+
+    pub fn admin(env: Env) -> Address {
+        env.storage().instance().get(&DataKey::Admin).unwrap()
     }
 
     pub fn vk_hash(env: Env) -> BytesN<32> {
@@ -136,5 +161,10 @@ impl ProofVerifier {
         let vp1 = vec![&env, neg_a, vk.alpha, vk_x, proof.c];
         let vp2 = vec![&env, proof.b, vk.beta, vk.gamma, vk.delta];
         bls.pairing_check(vp1, vp2)
+    }
+
+    fn require_admin(env: &Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
     }
 }

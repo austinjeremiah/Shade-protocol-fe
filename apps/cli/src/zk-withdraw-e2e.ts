@@ -6,7 +6,8 @@ import { sorobanInvoke, createTrustline, bytesToCliHex } from "@shade/stellar-ut
 import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet, hexRoot } from "./lib/prove.js";
 import { LOCKED_CCTP } from "@shade/cctp-utils";
 
-const SCRATCH = "/private/tmp/claude-501/-Users-kaushikh-Shade/e40ac770-8ed9-469c-a55f-8ca2f332da04/scratchpad";
+import { scratchDir } from "./lib/paths.js";
+const SCRATCH = scratchDir();
 const env = await loadRuntimeEnv();
 const results: CheckResult[] = [];
 

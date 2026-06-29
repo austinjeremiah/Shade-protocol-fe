@@ -5,7 +5,7 @@ import { config } from "dotenv";
 export type EnvMap = Record<string, string>;
 
 export async function loadRuntimeEnv(): Promise<EnvMap> {
-  for (const path of ["/Users/kaushikh/Shade/.env", ".env", ".env.generated"]) {
+  for (const path of [process.env.SHADE_ENV_FILE ?? ".env", ".env", ".env.generated", "../.env"]) {
     if (existsSync(path)) config({ path, override: false });
   }
   const env: EnvMap = { ...process.env } as EnvMap;

@@ -8,7 +8,7 @@ import { LOCKED_CCTP } from "@shade/cctp-utils";
 
 type EnvMap = Record<string, string>;
 
-for (const path of [".env", "../.env", "/Users/kaushikh/Shade/.env"]) {
+for (const path of [process.env.SHADE_ENV_FILE ?? ".env", "../.env", ".env.generated"]) {
   if (existsSync(path)) config({ path, override: false });
 }
 

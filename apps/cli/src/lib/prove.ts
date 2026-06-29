@@ -1,13 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync } from "node:fs";
 
-const ROOT = "/Users/kaushikh/Shade/shade-protocol";
-const REF = `${ROOT}/.zk-ref/soroban-examples/privacy-pools`;
-export const COINUTILS = `${REF}/target/release/stellar-coinutils`;
+import { COINUTILS_BIN, CIRCOM2SOROBAN_BIN, withdrawCircuitDir, transferCircuitDir } from "./paths.js";
+
+export const COINUTILS = COINUTILS_BIN;
 // Shade's own corrected withdraw circuit (commitment = Poseidon(value,label,precommit),
 // matching coinutils native poseidon). build/ + output/ live here.
-export const CIRCUITS = `${ROOT}/circuits/withdraw_public`;
-export const C2S = `${ROOT}/tools/circom2soroban/target/release/circom2soroban`;
+export const CIRCUITS = withdrawCircuitDir();
+export const C2S = CIRCOM2SOROBAN_BIN;
 
 export type GeneratedCoin = {
   path: string;
@@ -58,7 +58,7 @@ export function hexRoot(decimal: string): string {
   return "0x" + BigInt(decimal).toString(16).padStart(64, "0");
 }
 
-const PT_CIRCUITS = `${ROOT}/circuits/private_transfer`;
+const PT_CIRCUITS = transferCircuitDir();
 
 export type TransferProof = {
   proofHex: string;

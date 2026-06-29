@@ -8,7 +8,8 @@ import { failIfAny, writeCheckReport, type CheckResult } from "./lib/report.js";
 import { runCctpInbound } from "./lib/cctp-inbound.js";
 import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet } from "./lib/prove.js";
 
-const SCRATCH = "/private/tmp/claude-501/-Users-kaushikh-Shade/e40ac770-8ed9-469c-a55f-8ca2f332da04/scratchpad";
+import { scratchDir } from "./lib/paths.js";
+const SCRATCH = scratchDir();
 const env = await loadRuntimeEnv();
 const results: CheckResult[] = [];
 

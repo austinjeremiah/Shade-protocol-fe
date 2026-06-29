@@ -1,11 +1,12 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, symbol_short};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env};
 
 #[contracttype]
 enum DataKey {
     Admin,
     Paused,
     Spent(BytesN<32>),
+    Authorized(Address), // #P1.3 allowed-spender registry
 }
 
 #[contract]
@@ -14,17 +15,42 @@ pub struct NullifierRegistry;
 #[contractimpl]
 impl NullifierRegistry {
     pub fn initialize(env: Env, admin: Address) {
-        if env.storage().instance().has(&DataKey::Admin) { panic!("already initialized"); }
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Paused, &false);
     }
 
-    pub fn spend(env: Env, nullifier: BytesN<32>) -> bool {
+    /// Admin grants/revokes a contract (e.g. ShadePool, IntentEscrow) the right
+    /// to spend nullifiers. Random accounts can never spend.
+    pub fn set_authorized_spender(env: Env, spender: Address, allowed: bool) {
+        Self::require_admin(&env);
+        if allowed {
+            env.storage().persistent().set(&DataKey::Authorized(spender), &true);
+        } else {
+            env.storage().persistent().remove(&DataKey::Authorized(spender));
+        }
+    }
+
+    pub fn is_authorized(env: Env, spender: Address) -> bool {
+        env.storage().persistent().get(&DataKey::Authorized(spender)).unwrap_or(false)
+    }
+
+    /// Spend a nullifier exactly once. Only an authorized spender contract may
+    /// call this, and it must authorize the call (caller.require_auth()).
+    pub fn spend(env: Env, caller: Address, nullifier: BytesN<32>) -> bool {
         Self::require_not_paused(&env);
-        if Self::is_spent(env.clone(), nullifier.clone()) { panic!("nullifier spent"); }
+        caller.require_auth();
+        if !env.storage().persistent().get(&DataKey::Authorized(caller.clone())).unwrap_or(false) {
+            panic!("unauthorized spender");
+        }
+        if Self::is_spent(env.clone(), nullifier.clone()) {
+            panic!("nullifier spent");
+        }
         env.storage().persistent().set(&DataKey::Spent(nullifier.clone()), &true);
-        env.events().publish((symbol_short!("spend"),), nullifier);
+        env.events().publish((symbol_short!("spend"), caller), nullifier);
         true
     }
 
@@ -49,6 +75,8 @@ impl NullifierRegistry {
 
     fn require_not_paused(env: &Env) {
         let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused { panic!("paused"); }
+        if paused {
+            panic!("paused");
+        }
     }
 }

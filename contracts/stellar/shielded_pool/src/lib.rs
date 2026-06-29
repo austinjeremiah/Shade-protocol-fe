@@ -173,7 +173,7 @@ impl ShieldedPool {
         let _: bool = env.invoke_contract(
             &nullreg,
             &Symbol::new(&env, "spend"),
-            vec![&env, nullifier_hash.clone().to_val()],
+            vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()],
         );
 
         // 4) Release USDC to the recipient.
@@ -243,7 +243,7 @@ impl ShieldedPool {
         let _: bool = env.invoke_contract(
             &nullreg,
             &Symbol::new(&env, "spend"),
-            vec![&env, nullifier_hash.clone().to_val()],
+            vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()],
         );
 
         // Insert the output commitment (new note); registrar supplies the new root.
@@ -318,7 +318,7 @@ impl ShieldedPool {
         let _: bool = env.invoke_contract(
             &nullreg,
             &Symbol::new(&env, "spend"),
-            vec![&env, nullifier_hash.clone().to_val()],
+            vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()],
         );
 
         // Burn pool USDC outbound via Stellar CCTP. TokenMessengerMinter pulls the
@@ -408,7 +408,7 @@ impl ShieldedPool {
         let _: bool = env.invoke_contract(
             &nullreg,
             &Symbol::new(&env, "spend"),
-            vec![&env, nullifier_hash.clone().to_val()],
+            vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()],
         );
 
         // Reimburse the solver from the pool.

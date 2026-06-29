@@ -10,7 +10,8 @@ import { generateCoin, computeStateRoot, buildTransferProof } from "./lib/prove.
 //   fund an input note -> prove a transfer (input -> output note + public fee,
 //   amounts hidden) -> settle on-chain (input nullifier spent, output commitment
 //   inserted). No public amount is revealed; only the fee + output commitment.
-const SCRATCH = "/private/tmp/claude-501/-Users-kaushikh-Shade/e40ac770-8ed9-469c-a55f-8ca2f332da04/scratchpad";
+import { scratchDir } from "./lib/paths.js";
+const SCRATCH = scratchDir();
 const env = await loadRuntimeEnv();
 const results: CheckResult[] = [];
 
