@@ -29,5 +29,6 @@
       "@shade/rfq": ["packages/rfq/src/index.ts"]
     }
   },
-  "include": ["apps/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts"]
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "apps/web"]
 }
