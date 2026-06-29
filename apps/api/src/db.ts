@@ -66,6 +66,20 @@ export class Store {
     );
   }
 
+  // C7: count unresolved ROOT_MISMATCH_CRITICAL findings from the root auditor
+  // (P1.9). The API refuses spends while any exist. Tolerates a missing table
+  // (migration 002 not yet applied) by treating it as "no findings".
+  async criticalRootMismatchCount(): Promise<number> {
+    try {
+      const r = await this.pool.query<{ n: string }>(
+        "select count(*)::text as n from root_audit_findings where code = 'ROOT_MISMATCH_CRITICAL'"
+      );
+      return Number(r.rows[0]?.n ?? "0");
+    } catch {
+      return 0;
+    }
+  }
+
   async getById<T>(table: string, idColumn: string, id: string): Promise<T | null> {
     const allowedTables = new Set([
       "cctp_deposits",

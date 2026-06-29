@@ -15,6 +15,7 @@
     "contracts:test": "tsx scripts/contracts-test.ts",
     "contracts:deploy:stellar": "tsx scripts/deploy-stellar-contracts.ts",
     "contracts:init:stellar": "tsx scripts/init-stellar-contracts.ts",
+    "contracts:deploy:pool": "tsx scripts/deploy-shielded-pool.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "circuits:build": "tsx scripts/circuits-build.ts",
     "circuits:test": "tsx scripts/circuits-test.ts",

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { Contract, JsonRpcProvider, Wallet } from "ethers";
+import { Keypair } from "@stellar/stellar-sdk";
 import { v4 as uuid } from "uuid";
 import pg from "pg";
 import { LOCKED_CCTP, ERC20_ABI } from "@shade/cctp-utils";
@@ -113,6 +114,12 @@ mark("QUOTE_RECEIVED", `quote ${quote.quote_id.slice(0, 8)} net ${quote.net_outp
 mark("QUOTE_VALIDATED", `quote_hash ${qHash.slice(0, 14)}...`);
 results.push({ name: "solver signed quote (ed25519)", ok: sig.sig.length === 128, detail: `sig 64B over quote_hash` });
 
+// C4: solver onboarding — the pool admin authorizes the solver's ed25519 pubkey.
+// rfq_settle rejects quotes signed by any non-authorized key (#23 UnauthorizedSolver).
+sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "set_authorized_solver",
+  args: ["--solver_pubkey", sig.pubkey, "--allowed", "true"], rpcUrl: rpc, passphrase: pass });
+results.push({ name: "C4 solver pubkey authorized on-chain (registry)", ok: true, detail: `solver ${sig.pubkey.slice(0, 12)}... allowed` });
+
 // 5) User accepts (acceptance signature) — accepted quote is immutable thereafter.
 const acceptanceSig = createHash("sha256").update(`${qHash}:${coin.commitmentHex}:accept`).digest("hex");
 mark("QUOTE_ACCEPTED", `acceptance ${acceptanceSig.slice(0, 12)}...`);
@@ -171,6 +178,21 @@ try {
 } catch (e) { bindingRejected = true; bindingErr = (e as Error).message; }
 const wrongQuoteCode = /#14|WrongQuote/.test(bindingErr);
 results.push({ name: "P1.6 relayer cannot swap accepted quote (proof binds quote_hash)", ok: bindingRejected, detail: bindingRejected ? (wrongQuoteCode ? "rejected Error(Contract, #14) WrongQuote" : `rejected: ${bindingErr.slice(0, 80)}`) : "NOT rejected!" });
+
+// 8c) NEGATIVE (C4): an UNauthorized solver key signs the real quote. The
+//     ed25519 sig is valid, but the key is not in the on-chain solver registry,
+//     so the contract must reject with UnauthorizedSolver (#23).
+const rogueSecret = Keypair.random().secret();
+const rogueSig = signQuoteStellar(qHash, rogueSecret);
+let solverRejected = false; let solverErr = "";
+try {
+  sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "rfq_settle",
+    args: ["--to_solver", solverStellarPub, "--proof_bytes", proof.proofHex, "--pub_signals_bytes", proof.publicHex,
+      "--quote_hash", qHash.slice(2), "--intent_hash", iHash.slice(2), "--fill_receipt_hash", fillReceiptHashHex,
+      "--solver_pubkey", rogueSig.pubkey, "--solver_sig", rogueSig.sig],
+    rpcUrl: rpc, passphrase: pass, retries: 1 });
+} catch (e) { solverRejected = true; solverErr = (e as Error).message; }
+results.push({ name: "C4 unauthorized solver rejected (on-chain solver registry)", ok: solverRejected, detail: solverRejected ? (/#23|UnauthorizedSolver/.test(solverErr) ? "rejected Error(Contract, #23) UnauthorizedSolver" : `rejected: ${solverErr.slice(0, 80)}`) : "NOT rejected!" });
 
 // 9) Settle on Stellar: verify proof + solver sig, spend nullifier, credit solver.
 //    (Solver USDC trustline was ensured at the top of the run; long since propagated.)

@@ -7,10 +7,14 @@ work. Each is verified on Stellar testnet.
 
 | Contract | ID | Notes |
 |---|---|---|
-| ShadePool (shielded_pool) | `CDUBLMVIRUAIWICRMY4RWUIEYMMMTFGMYZKENVEPKCTGLDOZHI5SJXQQ` | canonical settlement contract (P1.8 redeploy) |
+| ShadePool (shielded_pool) | `CDVEGBVXPIHKHCR7CJDJS4JVCMOVABEFBQ4HZQ7PKK6VIO3J3V5ZRTB5` | canonical settlement contract (C4/C6 redeploy) |
 | NullifierRegistry | `CBAKCITRZLJZFQC4ISSYH5UESYFUYBFRANVM5VPDA6OH3VDTSLQ2IH67` | authorized-spender locked |
 | VerifierWithdraw | `CCAO4CASJGP57A4SOQTSQO7JWAY4WXXQRU4EUOZGMCR3QF62VOIMCYY5` | admin-gated set_vk; 17-signal vk (P1.7) |
 | VerifierDepositNoteMint | `CC4FGBVT4BYYM5S3NJKJGOLMICQV3HADL5XRHXMXFQEZ5XQ2K2EJHNJO` | admin-gated set_vk; 14-signal vk (P1.8) |
+| VerifierTransfer | `CDBCXL3RLJM7SSZUV2ULCKIKX3FE4KCXRNRFAUXE7PS4YZGDXQSFZ7T5` | admin-gated set_vk; 6-signal vk |
+
+Deploy + wire the canonical stack with `npm run contracts:deploy:pool`
+(`SHADE_REDEPLOY_POOL=1` to force a fresh pool).
 | VerifierTransfer | `CDBCXL3RLJM7SSZUV2ULCKIKX3FE4KCXRNRFAUXE7PS4YZGDXQSFZ7T5` | admin-gated set_vk |
 
 ## Done
@@ -183,6 +187,40 @@ write; `e2e:all` calls `beginReport` once and shares a `SHADE_REPORT_RUN_ID` wit
 its children so the whole suite is one report. `npm run test-report` prints the
 generated report and exits non-zero if any `FAIL` line is present (CI gate). The
 legacy `docs/test-report.md` is retained as a historical deploy log only.
+
+### Cross-validation fixes (post-audit hardening)
+A review flagged gaps between docs and code; fixed:
+- **C1** `circuits:build`/`circuits:test` were stale (referenced Noir, claimed no
+  circuits). Replaced with the real Circom/snarkjs pipeline (compile + setup + vk
+  validation for withdraw_public/private_transfer/deposit_note_mint; prove + local
+  verify for each). Both pass.
+- **C2** `npm run contracts:deploy:pool` (`scripts/deploy-shielded-pool.ts`) now
+  deploys + wires the canonical ShadePool stack and writes `SHIELDED_POOL_CONTRACT`
+  + verifier IDs to `.env.generated`; `.env.example` updated with canonical vars
+  (legacy marked deprecated). The old `deploy-stellar-contracts.ts` remains for the
+  legacy crates only.
+- **C3** API `GET /v1/contracts` now exposes `shadePool` + the three verifiers and
+  buckets legacy contracts under `deprecated`.
+- **C4** `rfq_settle` now enforces solver authorization via an on-chain registry
+  (`set_authorized_solver`); rogue solver key rejected `#23 UnauthorizedSolver`
+  (proven in rfq-e2e). Full on-chain quote/intent lifecycle state remains PHASE 2
+  (see `docs/blockers.md` deviation #2).
+- **C5** The shared withdraw circuit (one circuit, op-type-gated, for withdraw/RFQ/
+  CCTP) is a documented deliberate deviation, not three separate circuits — see
+  `docs/blockers.md` deviation #1.
+- **C6** `receive_cctp_deposit` now also enforces signal [3] destinationDomain == 27
+  (Stellar CCTP domain), signal [5] burnTxHashHash != 0, and signal [6] amount6dp>0
+  with amount6dp*10 >= amount7dp (`#22 WrongDepositField`). Verified by a passing
+  real deposit in rfq-e2e.
+- **C7** API refuses spends (`assertRootHealthy`, 409) on any unresolved
+  `ROOT_MISMATCH_CRITICAL` from the root auditor, wired into withdraw/RFQ/exit prep.
+- **C8** `docs/blockers.md` rewritten to reflect current status + deviations.
+
+On-chain re-proof on the C4/C6 pool `CDVEGBVXPIHKHCR7CJDJS4JVCMOVABEFBQ4HZQ7PKK6VIO3J3V5ZRTB5`:
+- rfq settle tx `540cf5930f8f93d18883f24be8a31830a9ef4c30cba0c087eb89ea5cdf5c7887`
+  (deposit-with-proof leaf 0 → fill → settle), solver authorized, solver credited.
+- NEGATIVE: rogue solver → `#23 UnauthorizedSolver`; swapped quote → `#14 WrongQuote`;
+  double-settle rejected. All PASS.
 
 ## PHASE 1 — COMPLETE ✅
 All gating protocol fixes (P1.1–P1.11) are done and verified on testnet. Next is

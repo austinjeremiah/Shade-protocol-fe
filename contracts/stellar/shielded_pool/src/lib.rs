@@ -31,6 +31,7 @@ const OP_WITHDRAW_PUBLIC: i128 = 1;
 const OP_WITHDRAW_CCTP: i128 = 2;
 const OP_RFQ_SETTLEMENT: i128 = 3;
 const OP_DEPOSIT_NOTE_MINT: i128 = 4; // P1.8 deposit circuit op type
+const STELLAR_CCTP_DOMAIN: i128 = 27; // C6: inbound deposits must target the Stellar CCTP domain
 
 // Off-chain-root design: the authorized registrar (admin/relayer) maintains the
 // Poseidon incremental Merkle tree off-chain at native speed (the same lean-imt
@@ -71,6 +72,7 @@ pub enum Error {
     WrongFinality = 20,     // P1.7 min_finality_threshold arg != bound in proof
     WrongCommitment = 21,   // P1.8 commitment arg != commitment bound in deposit proof
     WrongDepositField = 22, // P1.8 a deposit CCTP field arg != value bound in proof
+    UnauthorizedSolver = 23,// C4 solver_pubkey is not in the authorized-solver registry
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -89,6 +91,7 @@ const DEPVERIFIER: Symbol = symbol_short!("depverif"); // P1.8 DepositNoteMint v
 enum DataKey {
     KnownRoot(BytesN<32>),
     Deposit(BytesN<32>),
+    Solver(BytesN<32>), // C4: authorized solver ed25519 pubkey -> allowed
 }
 
 #[contract]
@@ -177,6 +180,22 @@ impl ShieldedPool {
             panic_err(&env, Error::WrongDepositField);
         }
         if fr32_to_i128(&signals.get(7).unwrap()) != amount {
+            panic_err(&env, Error::WrongDepositField);
+        }
+        // C6 [3] destination domain must be the Stellar CCTP domain (this chain).
+        if fr32_to_i128(&signals.get(3).unwrap()) != STELLAR_CCTP_DOMAIN {
+            panic_err(&env, Error::WrongDepositField);
+        }
+        // C6 [5] burn-tx hash must be bound (non-zero); it has no trusted on-chain
+        // source so it is recorded for auditability rather than independently verified.
+        if fr32_to_i128(&signals.get(5).unwrap()) == 0 {
+            panic_err(&env, Error::WrongDepositField);
+        }
+        // C6 [6] amount6dp must be positive and consistent with the minted 7dp
+        // amount: 7dp = 6dp * 10 minus the (non-negative) CCTP fast-transfer fee, so
+        // amount6dp*10 >= amount7dp. This binds the 6dp burn amount to the mint.
+        let amount6: i128 = fr32_to_i128(&signals.get(6).unwrap());
+        if amount6 <= 0 || amount6 * 10 < amount {
             panic_err(&env, Error::WrongDepositField);
         }
         // [4] cctp nonce, [10] encrypted-note-payload, [11] policy id (reduced to field).
@@ -313,6 +332,19 @@ impl ShieldedPool {
     pub fn set_deposit_verifier(env: Env, verifier: Address) {
         Self::require_admin(&env);
         env.storage().instance().set(&DEPVERIFIER, &verifier);
+    }
+
+    /// C4 Authorize (or revoke) a solver ed25519 public key for RFQ settlement.
+    /// Admin-gated. `rfq_settle` rejects any quote signed by a non-authorized key,
+    /// enforcing "solver is authorized / solver public key is registered" on-chain.
+    pub fn set_authorized_solver(env: Env, solver_pubkey: BytesN<32>, allowed: bool) {
+        Self::require_admin(&env);
+        env.storage().persistent().set(&DataKey::Solver(solver_pubkey), &allowed);
+    }
+
+    /// C4 Read whether a solver ed25519 public key is authorized.
+    pub fn is_authorized_solver(env: Env, solver_pubkey: BytesN<32>) -> bool {
+        env.storage().persistent().get(&DataKey::Solver(solver_pubkey)).unwrap_or(false)
     }
 
     /// #2 Hidden-amount shielded transfer: spend an input note, create an output
@@ -531,6 +563,11 @@ impl ShieldedPool {
     ) {
         Self::require_not_paused(&env);
 
+        // C4: the solver key must be in the admin-managed authorized-solver registry
+        // (enforces "solver is authorized / pubkey registered" on-chain).
+        if !env.storage().persistent().get(&DataKey::Solver(solver_pubkey.clone())).unwrap_or(false) {
+            panic_err(&env, Error::UnauthorizedSolver);
+        }
         // Verify the solver signed this exact quote (binds quote to solver key).
         let msg = Bytes::from_array(&env, &quote_hash.to_array());
         env.crypto().ed25519_verify(&solver_pubkey, &msg, &solver_sig);

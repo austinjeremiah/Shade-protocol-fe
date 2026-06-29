@@ -29,11 +29,21 @@ export async function registerRoutes(app: FastifyInstance, store = new Store()):
 
   app.get("/v1/config", async () => LOCKED_CCTP);
   app.get("/v1/contracts", async () => ({
-    shadeVault: process.env.SHADE_VAULT_CONTRACT,
-    commitmentTree: process.env.COMMITMENT_TREE_CONTRACT,
+    // Canonical contracts (the active settlement path; P1.1).
+    shadePool: process.env.SHIELDED_POOL_CONTRACT,
     nullifierRegistry: process.env.NULLIFIER_REGISTRY_CONTRACT,
-    complianceRegistry: process.env.COMPLIANCE_REGISTRY_CONTRACT,
-    intentEscrow: process.env.INTENT_ESCROW_CONTRACT
+    verifierWithdraw: process.env.VERIFIER_WITHDRAW_CONTRACT,
+    verifierTransfer: process.env.TRANSFER_VERIFIER_CONTRACT,
+    verifierDepositNoteMint: process.env.VERIFIER_DEPOSIT_NOTE_MINT_CONTRACT,
+    cctpForwarder: process.env.STELLAR_CCTP_FORWARDER_CONTRACT,
+    usdcSac: process.env.STELLAR_TESTNET_USDC_SAC_CONTRACT,
+    // Legacy contracts — DEPRECATED, not on the active path (P1.1).
+    deprecated: {
+      shadeVault: process.env.SHADE_VAULT_CONTRACT,
+      commitmentTree: process.env.COMMITMENT_TREE_CONTRACT,
+      complianceRegistry: process.env.COMPLIANCE_REGISTRY_CONTRACT,
+      intentEscrow: process.env.INTENT_ESCROW_CONTRACT
+    }
   }));
   app.get("/v1/balances/testnet", async () => ({ status: "requires setup:testnet for live balances" }));
   app.post("/v1/setup/validate", async () => ({ status: "run npm run setup:testnet" }));
@@ -106,7 +116,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store()):
   });
   app.get("/v1/proofs/:proof_job_id", async (request) => store.getById("proof_jobs", "proof_job_id", (request.params as { proof_job_id: string }).proof_job_id));
 
-  app.post("/v1/withdrawals/prepare", async (request) => createWithdrawal(request, store));
+  app.post("/v1/withdrawals/prepare", async (request) => { await assertRootHealthy(store); return createWithdrawal(request, store); });
   app.post("/v1/withdrawals/submit", async () => failLive("withdraw submit requires proof and Stellar transaction"));
   app.get("/v1/withdrawals/:withdrawal_id", async (request) => store.getById("withdrawals", "withdrawal_id", (request.params as { withdrawal_id: string }).withdrawal_id));
 
@@ -169,6 +179,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store()):
     return { fill_id: fillId };
   });
   app.post("/v1/rfq/settle", async (request) => {
+    await assertRootHealthy(store);
     const body = settlementSchema.parse(request.body);
     const settlementId = deterministicId({ namespace: "settle", parts: [body.intent_hash, body.quote_id, body.nullifier] });
     await store.insertGeneric("settlements", { settlement_id: settlementId, ...body, state: "SETTLEMENT_SUBMITTED" });
@@ -178,6 +189,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store()):
   app.get("/v1/settlements/:settlement_id", async (request) => store.getById("settlements", "settlement_id", (request.params as { settlement_id: string }).settlement_id));
 
   app.post("/v1/cctp/outbound/prepare", async (request) => {
+    await assertRootHealthy(store);
     const body = cctpExitSchema.parse(request.body);
     const idempotencyKey = idem(request);
     const exitId = deterministicId({ namespace: "exit", parts: [idempotencyKey, body.nullifier] });
@@ -187,7 +199,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store()):
   });
   app.post("/v1/cctp/outbound/submit", async () => failLive("outbound submit requires live Stellar CCTP burn and Arbitrum mint"));
   app.get("/v1/cctp/outbound/:exit_id", async (request) => store.getById("cctp_exits", "exit_id", (request.params as { exit_id: string }).exit_id));
-  app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.md" }));
+  app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.generated.md" }));
 }
 
 async function createWithdrawal(request: FastifyRequest, store: Store) {
@@ -206,6 +218,18 @@ async function createWithdrawal(request: FastifyRequest, store: Store) {
   });
   await store.transition({ entityType: "withdrawal", entityId: withdrawalId, toState: "prepared" });
   return { withdrawal_id: withdrawalId };
+}
+
+// C7: refuse spends while the root auditor (P1.9) has flagged a critical root
+// mismatch. Any unresolved ROOT_MISMATCH_CRITICAL finding blocks withdraw / RFQ
+// settle / CCTP-exit preparation with a 409.
+async function assertRootHealthy(store: Store): Promise<void> {
+  const critical = await store.criticalRootMismatchCount();
+  if (critical > 0) {
+    const error = new Error(`ROOT_MISMATCH_CRITICAL: ${critical} unresolved root-audit finding(s); spends are blocked`);
+    (error as Error & { statusCode: number }).statusCode = 409;
+    throw error;
+  }
 }
 
 function failLive(message: string) {
