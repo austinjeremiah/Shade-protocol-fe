@@ -1,8 +1,8 @@
 diff --git a/privacy-pools/cli/coinutils/src/cli/args.rs b/privacy-pools/cli/coinutils/src/cli/args.rs
-index 440aa84..8a714d3 100644
+index 440aa84..eaf794e 100644
 --- a/privacy-pools/cli/coinutils/src/cli/args.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/args.rs
-@@ -30,6 +30,18 @@ pub enum Commands {
+@@ -30,6 +30,27 @@ pub enum Commands {
          /// Output file path
          #[arg(short, long, default_value = "withdrawal.json")]
          output: String,
@@ -18,10 +18,19 @@ index 440aa84..8a714d3 100644
 +        /// P1.5 deadline ledger
 +        #[arg(long, default_value = "0")]
 +        deadline_ledger: String,
++        /// P1.6 RFQ quote hash (decimal field element; int(sha256(quote)[:31]))
++        #[arg(long, default_value = "0")]
++        quote_hash: String,
++        /// P1.6 RFQ intent hash (decimal field element; int(sha256(intent)[:31]))
++        #[arg(long, default_value = "0")]
++        intent_hash: String,
++        /// P1.6 RFQ fill-receipt hash (decimal field element; int(sha256(fill_tx)[:31]))
++        #[arg(long, default_value = "0")]
++        fill_receipt_hash: String,
      },
      /// Update association set
      UpdateAssociation {
-@@ -38,6 +50,24 @@ pub enum Commands {
+@@ -38,6 +59,24 @@ pub enum Commands {
          /// Label to add
          label: String,
      },
@@ -47,10 +56,10 @@ index 440aa84..8a714d3 100644
  
  impl Cli {
 diff --git a/privacy-pools/cli/coinutils/src/cli/commands.rs b/privacy-pools/cli/coinutils/src/cli/commands.rs
-index 92bf7f3..f6857b9 100644
+index 92bf7f3..770430b 100644
 --- a/privacy-pools/cli/coinutils/src/cli/commands.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/commands.rs
-@@ -57,12 +57,17 @@ impl CommandHandler {
+@@ -57,12 +57,20 @@ impl CommandHandler {
      }
  
      /// Handle the withdraw command
@@ -65,10 +74,13 @@ index 92bf7f3..f6857b9 100644
 +        recipient_hash: String,
 +        relayer_fee: String,
 +        deadline_ledger: String,
++        quote_hash: String,
++        intent_hash: String,
++        fill_receipt_hash: String,
      ) -> Result<()> {
          info!("Processing withdrawal for coin: {}", coin_file);
          debug!("State file: {}", state_file);
-@@ -86,12 +91,17 @@ impl CommandHandler {
+@@ -86,12 +94,21 @@ impl CommandHandler {
          };
  
          // Generate withdrawal
@@ -84,10 +96,14 @@ index 92bf7f3..f6857b9 100644
 +        snark_input.recipient_hash = recipient_hash;
 +        snark_input.relayer_fee = relayer_fee;
 +        snark_input.deadline_ledger = deadline_ledger;
++        // P1.6 RFQ-settlement bindings (passed through into the proof).
++        snark_input.quote_hash = quote_hash;
++        snark_input.intent_hash = intent_hash;
++        snark_input.fill_receipt_hash = fill_receipt_hash;
  
          // Save withdrawal data
          let withdrawal_json = self
-@@ -125,6 +135,39 @@ impl CommandHandler {
+@@ -125,6 +142,39 @@ impl CommandHandler {
          println!("Association set updated successfully");
          Ok(())
      }
@@ -145,10 +161,10 @@ index 2aff16c..2c76d4a 100644
 +pub const POOL_ID: &str = "1"; // Shade shielded pool v1
 +pub const CHAIN_ID: &str = "148"; // Stellar (SLIP-44 coin type), testnet domain marker
 diff --git a/privacy-pools/cli/coinutils/src/main.rs b/privacy-pools/cli/coinutils/src/main.rs
-index c920f69..4c63ea3 100644
+index c920f69..54ffd3b 100644
 --- a/privacy-pools/cli/coinutils/src/main.rs
 +++ b/privacy-pools/cli/coinutils/src/main.rs
-@@ -17,11 +17,32 @@ fn main() {
+@@ -17,11 +17,38 @@ fn main() {
              state_file,
              association_file,
              output,
@@ -157,6 +173,9 @@ index c920f69..4c63ea3 100644
 +            recipient_hash,
 +            relayer_fee,
 +            deadline_ledger,
++            quote_hash,
++            intent_hash,
++            fill_receipt_hash,
 +        } => command_handler.handle_withdraw(
 +            coin_file,
 +            state_file,
@@ -166,6 +185,9 @@ index c920f69..4c63ea3 100644
 +            recipient_hash,
 +            relayer_fee,
 +            deadline_ledger,
++            quote_hash,
++            intent_hash,
++            fill_receipt_hash,
 +        ),
          Commands::UpdateAssociation {
              association_file,
@@ -195,10 +217,10 @@ index d0c5252..552a253 100644
 +pub use transfer::*;
  pub use withdrawal::*;
 diff --git a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-index f112d23..878caab 100644
+index f112d23..d713bf7 100644
 --- a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
 +++ b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-@@ -110,6 +110,13 @@ impl WithdrawalManager {
+@@ -110,6 +110,17 @@ impl WithdrawalManager {
              association_root,
              label_index,
              label_siblings,
@@ -209,14 +231,18 @@ index f112d23..878caab 100644
 +            recipient_hash: "0".to_string(),
 +            relayer_fee: "0".to_string(),
 +            deadline_ledger: "0".to_string(),
++            // P1.6 defaults; overridden by handle_withdraw from CLI args.
++            quote_hash: "0".to_string(),
++            intent_hash: "0".to_string(),
++            fill_receipt_hash: "0".to_string(),
          })
      }
  
 diff --git a/privacy-pools/cli/coinutils/src/types/snark.rs b/privacy-pools/cli/coinutils/src/types/snark.rs
-index eeba96a..afccd96 100644
+index eeba96a..addb86e 100644
 --- a/privacy-pools/cli/coinutils/src/types/snark.rs
 +++ b/privacy-pools/cli/coinutils/src/types/snark.rs
-@@ -20,4 +20,18 @@ pub struct SnarkInput {
+@@ -20,4 +20,25 @@ pub struct SnarkInput {
      pub label_index: String,
      #[serde(rename = "labelSiblings")]
      pub label_siblings: Vec<String>,
@@ -234,4 +260,11 @@ index eeba96a..afccd96 100644
 +    pub relayer_fee: String,
 +    #[serde(rename = "deadlineLedger")]
 +    pub deadline_ledger: String,
++    // P1.6 RFQ-settlement bindings (contract enforces these match args)
++    #[serde(rename = "quoteHash")]
++    pub quote_hash: String,
++    #[serde(rename = "intentHash")]
++    pub intent_hash: String,
++    #[serde(rename = "fillReceiptHash")]
++    pub fill_receipt_hash: String,
  }

@@ -20,8 +20,13 @@ template Withdraw(treeDepth, associationDepth) {
     //   [0] nullifierHash  [1] operationType  [2] withdrawnValue
     //   [3] recipientHash   [4] relayerFee     [5] deadlineLedger
     //   [6] stateRoot       [7] associationRoot[8] poolId  [9] chainId
-    signal input operationType;         // bound op type; contract requires == WITHDRAW_PUBLIC
-    signal input withdrawnValue;
+    //   [10] quoteHash      [11] intentHash    [12] fillReceiptHash  (P1.6 RFQ)
+    //
+    // P1.6: signals [10..12] are RFQ-settlement bindings. They are APPENDED so the
+    // withdraw/cctp public-signal indices [0..9] are unchanged. For WITHDRAW_PUBLIC
+    // and WITHDRAW_CCTP these are 0; rfq_settle enforces arg==proof on them.
+    signal input operationType;         // bound op type; contract requires == op for this fn
+    signal input withdrawnValue;        // RFQ: solver credit / net output
     signal input recipientHash;         // sha256(recipient strkey); contract recomputes from `to`
     signal input relayerFee;            // bound fee; net to recipient = withdrawnValue - relayerFee
     signal input deadlineLedger;        // bound deadline; contract requires not expired
@@ -29,6 +34,9 @@ template Withdraw(treeDepth, associationDepth) {
     signal input associationRoot;       // ASP allowlist root (MUST be non-zero)
     signal input poolId;                // domain separator: this pool
     signal input chainId;               // domain separator: this chain
+    signal input quoteHash;             // P1.6 RFQ: int(sha256(quote)[:31]); contract binds arg
+    signal input intentHash;            // P1.6 RFQ: int(sha256(intent)[:31]); contract binds arg
+    signal input fillReceiptHash;       // P1.6 RFQ: int(sha256(fill_tx)[:31]); contract binds arg
 
     // PRIVATE SIGNALS
     signal input label;                 // hash(scope, nonce)
@@ -99,6 +107,12 @@ template Withdraw(treeDepth, associationDepth) {
     signal opBind <== operationType * operationType;
     signal recBind <== recipientHash * recipientHash;
     signal dlBind <== deadlineLedger * deadlineLedger;
+
+    // P1.6 RFQ bindings: pass-through public inputs the contract enforces
+    // (quote_hash / intent_hash / fill_receipt_hash arg == proof signal).
+    signal qhBind <== quoteHash * quoteHash;
+    signal ihBind <== intentHash * intentHash;
+    signal frBind <== fillReceiptHash * fillReceiptHash;
 }
 
-component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId]} = Withdraw(12, 2);
+component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId, quoteHash, intentHash, fillReceiptHash]} = Withdraw(12, 2);

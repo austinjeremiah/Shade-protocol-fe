@@ -53,6 +53,9 @@ pub enum Error {
     WrongOperation = 11,    // P1.5 operation_type in proof != expected for this fn
     WrongRecipient = 12,    // P1.5 recipientHash in proof != hash(to)
     Expired = 13,           // P1.5 deadline_ledger exceeded
+    WrongQuote = 14,        // P1.6 quote_hash arg != quoteHash bound in proof
+    WrongIntent = 15,       // P1.6 intent_hash arg != intentHash bound in proof
+    WrongFillReceipt = 16,  // P1.6 fill_receipt_hash arg != fillReceiptHash bound in proof
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -391,13 +394,21 @@ impl ShieldedPool {
     ///   3. spending the user's nullifier exactly once,
     ///   4. crediting `withdrawnValue` USDC to the solver's account.
     ///
-    /// pub signals: [nullifierHash, withdrawnValue, stateRoot, associationRoot]
+    /// P1.6 pub signals (shared withdraw circuit, 13 signals):
+    /// [0] nullifierHash [1] operationType [2] withdrawnValue/credit [4] relayerFee/fee
+    /// [5] deadlineLedger [6] stateRoot [7] associationRoot [8] poolId [9] chainId
+    /// [10] quoteHash [11] intentHash [12] fillReceiptHash.
+    /// The quote_hash / intent_hash / fill_receipt_hash function args are bound into
+    /// the proof (field element = int(sha256(..)[:31])), so a relayer cannot settle
+    /// a valid user proof against a different quote, intent, or fill.
     pub fn rfq_settle(
         env: Env,
         to_solver: Address,
         proof_bytes: Bytes,
         pub_signals_bytes: Bytes,
         quote_hash: BytesN<32>,
+        intent_hash: BytesN<32>,
+        fill_receipt_hash: BytesN<32>,
         solver_pubkey: BytesN<32>,
         solver_sig: BytesN<64>,
     ) {
@@ -408,13 +419,36 @@ impl ShieldedPool {
         env.crypto().ed25519_verify(&solver_pubkey, &msg, &solver_sig);
 
         let signals = parse_public_signals(&env, &pub_signals_bytes);
+        let op_type: i128 = fr32_to_i128(&signals.get(1).unwrap());
         let nullifier_hash: BytesN<32> = signals.get(0).unwrap();
         let credit: i128 = fr32_to_i128(&signals.get(2).unwrap()); // P1.5 layout: value@2
+        let relayer_fee: i128 = fr32_to_i128(&signals.get(4).unwrap());
+        let deadline_ledger: i128 = fr32_to_i128(&signals.get(5).unwrap());
         let state_root: BytesN<32> = signals.get(6).unwrap();      // P1.5 layout: stateRoot@6
-        if credit <= 0 {
+        if credit <= 0 || relayer_fee < 0 || relayer_fee > credit {
             panic_err(&env, Error::BadAmount);
         }
-        let _ = OP_RFQ_SETTLEMENT; // full op-type/quote binding for rfq is P1.6
+        // P1.6 enforce operation type is RFQ settlement.
+        if op_type != OP_RFQ_SETTLEMENT {
+            panic_err(&env, Error::WrongOperation);
+        }
+        // P1.6 deadline must not be expired.
+        if (env.ledger().sequence() as i128) > deadline_ledger {
+            panic_err(&env, Error::Expired);
+        }
+        // P1.6 full RFQ-term binding: the quote/intent/fill args must equal the
+        // values bound into the proof. quote_hash also commits (via its sha256) to
+        // output asset, net_output, fee, solver_id and deadline of the accepted
+        // quote, so this prevents any relayer mutation of the accepted terms.
+        if Self::hash_to_field(&env, &quote_hash) != signals.get(10).unwrap() {
+            panic_err(&env, Error::WrongQuote);
+        }
+        if Self::hash_to_field(&env, &intent_hash) != signals.get(11).unwrap() {
+            panic_err(&env, Error::WrongIntent);
+        }
+        if Self::hash_to_field(&env, &fill_receipt_hash) != signals.get(12).unwrap() {
+            panic_err(&env, Error::WrongFillReceipt);
+        }
         Self::check_domain_compliance(&env, &signals);
         if !env.storage().persistent().get(&DataKey::KnownRoot(state_root.clone())).unwrap_or(false) {
             panic_err(&env, Error::UnknownRoot);
@@ -517,12 +551,20 @@ impl ShieldedPool {
         let mut buf = [0u8; 56];
         s.copy_into_slice(&mut buf);
         let sha: [u8; 32] = env.crypto().sha256(&Bytes::from_slice(env, &buf)).to_array();
-        // field element = sha[0..31] as the low 31 bytes (BE), top byte 0.
-        let mut rh = [0u8; 32];
+        Self::hash_to_field(env, &BytesN::from_array(env, &sha))
+    }
+
+    /// Reduce a 32-byte hash to a valid BLS12-381 field element by taking the top
+    /// 31 bytes (BE) with the high byte zeroed. Matches the off-chain encoding
+    /// `int(sha256(..)[:31])` used for P1.5 recipient and P1.6 quote/intent/fill
+    /// bindings (circom2soroban serialises a 248-bit value as `[0x00, b0..b30]`).
+    fn hash_to_field(env: &Env, h: &BytesN<32>) -> BytesN<32> {
+        let src = h.to_array();
+        let mut out = [0u8; 32];
         for i in 0..31 {
-            rh[i + 1] = sha[i];
+            out[i + 1] = src[i];
         }
-        BytesN::from_array(env, &rh)
+        BytesN::from_array(env, &out)
     }
 }
 

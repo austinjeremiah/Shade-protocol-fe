@@ -7,9 +7,9 @@ work. Each is verified on Stellar testnet.
 
 | Contract | ID | Notes |
 |---|---|---|
-| ShadePool (shielded_pool) | `CAMO3X5C2NDGEGCNZ4AHDIF6U6NBTLSHXXZHZWNSVEIGGTJUBJPAOO6C` | canonical settlement contract |
+| ShadePool (shielded_pool) | `CAE7NCPROLSJTN5PCN3VQMBGTLT7UH3KOWDCUULF42SWC5B4MW2A6BPJ` | canonical settlement contract (P1.6 redeploy) |
 | NullifierRegistry | `CBAKCITRZLJZFQC4ISSYH5UESYFUYBFRANVM5VPDA6OH3VDTSLQ2IH67` | authorized-spender locked |
-| VerifierWithdraw | `CCZ2CM33FDJOELGXBB3E6YYC42VNQ5KKFGCNT4LLIVUT4YEDSNZNLS3D` | admin-gated set_vk |
+| VerifierWithdraw | `CCQYWSZ7ODLA5RDOA4G52IITQXNVVKQIUDTT34IYMQSUQM2TOESQOYGF` | admin-gated set_vk; 13-signal vk (P1.6) |
 | VerifierTransfer | `CDBCXL3RLJM7SSZUV2ULCKIKX3FE4KCXRNRFAUXE7PS4YZGDXQSFZ7T5` | admin-gated set_vk |
 
 ## Done
@@ -55,14 +55,40 @@ On-chain proof (current pool `CCTVKHRPFH3GGUMXWJ3B3KFOGTU6YG3WV263MRK5UL5ELIADA2
 - Relayer redirect to a different recipient rejected with `Error(Contract, #12)`. PASS.
 This is Definition-of-Done #4 ("Withdraw proof binds recipient").
 
-NOTE: withdraw/rfq_settle/withdraw_cctp share this 10-signal circuit; the latter
+NOTE: withdraw/rfq_settle/withdraw_cctp share this circuit; the latter
 two now read the new indices (value@2, stateRoot@6, assoc@7, pool@8, chain@9) so
-they keep working, but their FULL term binding is P1.6/P1.7 (below).
+they keep working. P1.6 (below) adds RFQ-specific binding signals; full CCTP term
+binding is P1.7.
+
+### P1.6 — RFQ settlement binding (quote/intent/fill/op-type/fee/deadline)
+The shared withdraw circuit gained 3 APPENDED public signals so withdraw/cctp
+indices [0..9] are unchanged (now 13 signals total):
+`[10] quoteHash  [11] intentHash  [12] fillReceiptHash` — each
+`int(sha256(..)[:31])`, bound via `x*x` pass-through constraints. The contract
+`rfq_settle` now takes `intent_hash` + `fill_receipt_hash` args (alongside the
+existing `quote_hash`) and enforces:
+- `operationType == RFQ_SETTLEMENT (3)` (else `#11 WrongOperation`)
+- `quote_hash arg`  → `hash_to_field` == proof signal[10] (else `#14 WrongQuote`)
+- `intent_hash arg` → `hash_to_field` == proof signal[11] (else `#15 WrongIntent`)
+- `fill_receipt_hash arg` → `hash_to_field` == proof signal[12] (else `#16 WrongFillReceipt`)
+- `relayerFee <= credit`, `deadlineLedger >= ledger` (else `#13 Expired`)
+The existing solver ed25519 signature over `quote_hash` is retained. Because
+`quote_hash` is `sha256` of the full accepted quote (output asset, net_output,
+fee, solver_id, valid_until, settlement_method), binding it into the user's proof
+transitively binds all those terms — a relayer cannot settle a valid user proof
+against any different quote/intent/fill. This is Definition-of-Done #6.
+
+On-chain proof (pool `CAE7NCPROLSJTN5PCN3VQMBGTLT7UH3KOWDCUULF42SWC5B4MW2A6BPJ`,
+verifier `CCQYWSZ7ODLA5RDOA4G52IITQXNVVKQIUDTT34IYMQSUQM2TOESQOYGF`):
+- RFQ settlement tx `1dd5830bc6d7694ca15a7fb3e00a4ad0d4d378de9f5a72c118ed31d9b2fbcdc6`
+  — proof verified on-chain + ed25519 quote-sig + nullifier spent + solver credited
+  5000000 (7dp). PASS.
+- NEGATIVE: relayer swaps in a different, validly-signed quote → rejected
+  `Error(Contract, #14) WrongQuote` (binding check precedes nullifier spend). PASS.
+- Double-settle rejected (nullifier already spent). PASS.
 
 ## Remaining PHASE 1 (next)
 
-- **P1.6 — RFQ settlement binding:** bind quote_hash, intent_hash, output asset,
-  fee, solver into the proof; contract enforces arg==proof. (Definition-of-Done #6.)
 - **P1.7 — WithdrawCCTP binding:** bind destination_domain, destination_recipient,
   max_fee, finality_threshold, deadline. (Definition-of-Done #5 for exit.)
 - **P1.8 — deposit_note_mint circuit** binding the CCTP message to the note.

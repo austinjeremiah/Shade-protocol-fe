@@ -8,7 +8,7 @@ import { sorobanInvoke, createTrustline } from "@shade/stellar-utils";
 import { loadRuntimeEnv, requireKeys } from "./lib/env.js";
 import { failIfAny, writeCheckReport, type CheckResult } from "./lib/report.js";
 import { runCctpInbound } from "./lib/cctp-inbound.js";
-import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet } from "./lib/prove.js";
+import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet, hashToField } from "./lib/prove.js";
 import {
   type Intent, type Quote, intentHash, quoteHash, signQuoteStellar, encryptIntent, priceQuote, usdc7ToDecimal
 } from "./lib/rfq.js";
@@ -130,14 +130,45 @@ const userUsdcAfter = (await usdcArb.balanceOf(userArbAddr)) as bigint;
 mark("FILL_EXECUTED_IF_REQUIRED", `fill tx ${fillTxHash}`);
 results.push({ name: "real Arbitrum fill executed", ok: userUsdcAfter - userUsdcBefore === fillAmount6, detail: `${fillTxHash} (+${fillAmount6} 6dp to user)` });
 
-// 8) Build the user note-ownership proof.
+// P1.6 fill-receipt hash (32-byte sha256 of the real Arbitrum fill tx hash).
+const fillReceiptHashHex = createHash("sha256").update(fillTxHash).digest("hex");
+
+// 8) Build the user note-ownership proof with FULL RFQ-term binding (P1.6):
+//    operation_type=3 (RFQ_SETTLEMENT), fee, deadline, and the quote/intent/fill
+//    hashes are bound into the proof so the relayer cannot mutate accepted terms.
 mark("PROOF_REQUESTED");
-const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_rfq", SCRATCH, "rfq", assoc.assocPath);
+const rfqDeadlineLedger = String(intent.expiry_ledger);
+const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_rfq", SCRATCH, "rfq", assoc.assocPath, {
+  operationType: "3",
+  recipientHash: "0",
+  relayerFee: fee7.toString(),
+  deadlineLedger: rfqDeadlineLedger,
+  quoteHash: hashToField(qHash),
+  intentHash: hashToField(iHash),
+  fillReceiptHash: hashToField(fillReceiptHashHex)
+});
 mark("PROOF_GENERATED");
 const rootMatch = proof.stateRootHex.toLowerCase() === ("0x" + onchainRoot.toLowerCase());
 results.push({ name: "circuit stateRoot == on-chain pool root", ok: rootMatch, detail: rootMatch ? "match" : `${proof.stateRootHex} vs 0x${onchainRoot}` });
 results.push({ name: "RFQ settlement proof locally verified", ok: proof.locallyVerified, detail: proof.locallyVerified ? "OK" : "FAILED" });
 mark("PROOF_VERIFIED_LOCALLY");
+
+// 8b) NEGATIVE (P1.6): a relayer swaps in a DIFFERENT but validly-signed quote.
+//     The solver sig over the swapped quote_hash passes ed25519, but the proof
+//     binds the ORIGINAL quote, so the contract must reject with WrongQuote (#14).
+const swappedQuote: Quote = { ...quote, quote_id: uuid(), net_output: usdc7ToDecimal(gross7) };
+const swappedQHash = quoteHash(swappedQuote);
+const swappedSig = signQuoteStellar(swappedQHash, solverStellarSecret);
+let bindingRejected = false; let bindingErr = "";
+try {
+  sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "rfq_settle",
+    args: ["--to_solver", solverStellarPub, "--proof_bytes", proof.proofHex, "--pub_signals_bytes", proof.publicHex,
+      "--quote_hash", swappedQHash.slice(2), "--intent_hash", iHash.slice(2), "--fill_receipt_hash", fillReceiptHashHex,
+      "--solver_pubkey", swappedSig.pubkey, "--solver_sig", swappedSig.sig],
+    rpcUrl: rpc, passphrase: pass, retries: 1 });
+} catch (e) { bindingRejected = true; bindingErr = (e as Error).message; }
+const wrongQuoteCode = /#14|WrongQuote/.test(bindingErr);
+results.push({ name: "P1.6 relayer cannot swap accepted quote (proof binds quote_hash)", ok: bindingRejected, detail: bindingRejected ? (wrongQuoteCode ? "rejected Error(Contract, #14) WrongQuote" : `rejected: ${bindingErr.slice(0, 80)}`) : "NOT rejected!" });
 
 // 9) Settle on Stellar: verify proof + solver sig, spend nullifier, credit solver.
 //    (Solver USDC trustline was ensured at the top of the run; long since propagated.)
@@ -146,7 +177,8 @@ const poolBalBefore = BigInt(poolRead("usdc_balance"));
 const settle = sorobanInvoke({
   contractId: pool, secret: relayerSecret, method: "rfq_settle",
   args: ["--to_solver", solverStellarPub, "--proof_bytes", proof.proofHex, "--pub_signals_bytes", proof.publicHex,
-    "--quote_hash", qHash.slice(2), "--solver_pubkey", sig.pubkey, "--solver_sig", sig.sig],
+    "--quote_hash", qHash.slice(2), "--intent_hash", iHash.slice(2), "--fill_receipt_hash", fillReceiptHashHex,
+    "--solver_pubkey", sig.pubkey, "--solver_sig", sig.sig],
   rpcUrl: rpc, passphrase: pass
 });
 const poolBalAfter = BigInt(poolRead("usdc_balance"));
@@ -159,7 +191,8 @@ let dsRejected = false;
 try {
   sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "rfq_settle",
     args: ["--to_solver", solverStellarPub, "--proof_bytes", proof.proofHex, "--pub_signals_bytes", proof.publicHex,
-      "--quote_hash", qHash.slice(2), "--solver_pubkey", sig.pubkey, "--solver_sig", sig.sig],
+      "--quote_hash", qHash.slice(2), "--intent_hash", iHash.slice(2), "--fill_receipt_hash", fillReceiptHashHex,
+      "--solver_pubkey", sig.pubkey, "--solver_sig", sig.sig],
     rpcUrl: rpc, passphrase: pass, retries: 1 });
 } catch { dsRejected = true; }
 results.push({ name: "settlement spends nullifier once (no double-settle)", ok: dsRejected, detail: dsRejected ? "second settle rejected" : "NOT rejected!" });

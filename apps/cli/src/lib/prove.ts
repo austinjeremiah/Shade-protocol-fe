@@ -116,12 +116,24 @@ export type WithdrawBinding = {
   recipientHash: string; // decimal field element = int(sha256(strkey)[:31])
   relayerFee: string;    // 7dp
   deadlineLedger: string;
+  // P1.6 RFQ-settlement bindings (decimal field elements; default "0" for non-RFQ).
+  quoteHash?: string;
+  intentHash?: string;
+  fillReceiptHash?: string;
 };
 
 // recipient_hash field element matching the contract: sha256(strkey)[:31 bytes].
 export function recipientHashField(strkey: string): string {
   const sha = createHash("sha256").update(strkey).digest();
   return BigInt("0x" + sha.subarray(0, 31).toString("hex")).toString();
+}
+
+// P1.6: reduce an existing 0x-prefixed 32-byte hash (e.g. a quote/intent/fill
+// hash) to the contract's field element: int(hash[:31 bytes]). The contract's
+// `hash_to_field` recomputes the identical value from the raw 32-byte arg.
+export function hashToField(hex32: string): string {
+  const h = hex32.startsWith("0x") ? hex32.slice(2) : hex32;
+  return BigInt("0x" + h.slice(0, 62)).toString(); // first 31 bytes = 62 hex chars
 }
 
 export function buildNoteProof(
@@ -142,7 +154,11 @@ export function buildNoteProof(
     "--operation-type", b.operationType,
     "--recipient-hash", b.recipientHash,
     "--relayer-fee", b.relayerFee,
-    "--deadline-ledger", b.deadlineLedger
+    "--deadline-ledger", b.deadlineLedger,
+    // P1.6 RFQ bindings (default "0" for withdraw/cctp).
+    "--quote-hash", b.quoteHash ?? "0",
+    "--intent-hash", b.intentHash ?? "0",
+    "--fill-receipt-hash", b.fillReceiptHash ?? "0"
   ], { encoding: "utf8" });
   const input = JSON.parse(readFileSync(inputPath, "utf8"));
   const stateRootHex = "0x" + BigInt(input.stateRoot).toString(16).padStart(64, "0");

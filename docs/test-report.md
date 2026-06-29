@@ -235,3 +235,22 @@ See `docs/blockers.md` for the (now minor) remaining items.
 - circuit stateRoot == on-chain root: PASS - match
 - on-chain transfer settle (verify + nullifier + output commitment): PASS - 55ff4923c6a629dc43dbbabaf27df6f66c50c91e8a15ecb8280620a56793d8e0
 - transfer double-spend prevented: FAIL - NOT rejected!
+
+## RFQ E2E (Path A: private note -> proof-of-fill -> Arbitrum payout)
+
+- RFQ env/contracts: PASS - present
+- solver USDC trustline: PASS - established
+- user note funded+registered (CCTP): PASS - burn 0x5bd6a67d1292..., leaf 0
+- intent encrypted at rest: PASS - aes-256-gcm, ct 558B
+- solver real Arbitrum USDC inventory check: PASS - have 2005000 need 497500 (6dp)
+- solver refuses quote beyond inventory: PASS - would refuse oversized quote
+- solver signed quote (ed25519): PASS - sig 64B over quote_hash
+- accepted quote immutable (hash binds fields): PASS - mutation changes quote_hash
+- real Arbitrum fill executed: PASS - 0x3e44c34e71095c1e11df00a856d0eb1253b7674a14011ba23e55efc0578b9ee7 (+497500 6dp to user)
+- circuit stateRoot == on-chain pool root: PASS - match
+- RFQ settlement proof locally verified: PASS - OK
+- P1.6 relayer cannot swap accepted quote (proof binds quote_hash): PASS - rejected Error(Contract, #14) WrongQuote
+- on-chain RFQ settlement (proof+sig+nullifier+credit): PASS - 1dd5830bc6d7694ca15a7fb3e00a4ad0d4d378de9f5a72c118ed31d9b2fbcdc6
+- solver credited from pool: PASS - pool 9998700 -> 4998700 (credited 5000000 7dp)
+- settlement spends nullifier once (no double-settle): PASS - second settle rejected
+- RFQ state machine transitions: PASS - INTENT_CREATED -> INTENT_ENCRYPTED -> INTENT_PUBLISHED_TO_ALLOWED_SOLVERS -> QUOTE_RECEIVED -> QUOTE_VALIDATED -> QUOTE_ACCEPTED -> SOLVER_INVENTORY_LOCKED -> FILL_CREATED -> FILL_EXECUTED_IF_REQUIRED -> PROOF_REQUESTED -> PROOF_GENERATED -> PROOF_VERIFIED_LOCALLY -> SETTLEMENT_SUBMITTED -> SETTLED
