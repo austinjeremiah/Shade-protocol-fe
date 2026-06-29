@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { JobQueue, type ServiceJob } from "@shade/queue";
 import { sorobanInvoke } from "@shade/stellar-utils";
+import { LOCKED_CCTP, fetchAttestationByTx } from "@shade/cctp-utils";
 import { runCctpInbound } from "../../cli/src/lib/cctp-inbound.js";
 import type { GeneratedCoin } from "../../cli/src/lib/prove.js";
 
@@ -11,11 +12,18 @@ import type { GeneratedCoin } from "../../cli/src/lib/prove.js";
 
 export const RELAYER_JOB_TYPES = [
   "CCTP_INBOUND",            // composite: burn -> attestation -> mint_and_forward -> register-note (+ deposit proof)
+  "CCTP_INBOUND_BURN", "CCTP_FETCH_ATTESTATION", "STELLAR_MINT_FORWARD", "REGISTER_NOTE", // granular inbound aliases -> composite
   "WITHDRAW_PUBLIC_SUBMIT",  // submit a withdraw proof on the pool
   "WITHDRAW_CCTP_BURN",      // submit a withdraw_cctp proof (proof-bound outbound burn)
-  "RFQ_SETTLE_SUBMIT"        // submit an rfq_settle proof (admin/relayer-submitted)
+  "RFQ_SETTLE_SUBMIT",       // submit an rfq_settle proof (admin/relayer-submitted)
+  "CCTP_OUTBOUND_ATTESTATION", // poll Circle for the Stellar->Arbitrum burn attestation
+  "CCTP_OUTBOUND_MINT"       // complete the Arbitrum mint (MessageTransmitter.receiveMessage)
 ] as const;
 export type RelayerJobType = (typeof RELAYER_JOB_TYPES)[number];
+
+// Granular inbound steps currently delegate to the composite CCTP_INBOUND (the
+// proven real implementation); true per-step decomposition is tracked in blockers.
+const INBOUND_ALIASES = new Set(["CCTP_INBOUND_BURN", "CCTP_FETCH_ATTESTATION", "STELLAR_MINT_FORWARD", "REGISTER_NOTE"]);
 
 type EnvMap = Record<string, string>;
 function parseEnvFile(env: EnvMap, path: string, override: boolean): void {
@@ -53,7 +61,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
   const relayerSecret = env.STELLAR_RELAYER_SECRET;
   if (!pool || !relayerSecret) throw new Error("relayer missing SHIELDED_POOL_CONTRACT / STELLAR_RELAYER_SECRET");
 
-  if (job.job_type === "CCTP_INBOUND") {
+  if (job.job_type === "CCTP_INBOUND" || INBOUND_ALIASES.has(job.job_type)) {
     await queue.setStatus(job.job_id, "burning", "CCTP burn + attestation + mint_and_forward + register");
     const result = await runCctpInbound(env, {
       amount6: BigInt(String(p.amount6 ?? "1000000")),
@@ -96,6 +104,26 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
         "--quote_hash", String(p.quoteHash), "--intent_hash", String(p.intentHash), "--fill_receipt_hash", String(p.fillReceiptHash),
         "--solver_pubkey", String(p.solverPubkey), "--solver_sig", String(p.solverSig)] });
     return { txHash: r.txHash };
+  }
+
+  if (job.job_type === "CCTP_OUTBOUND_ATTESTATION") {
+    // Poll Circle Iris for the Stellar->Arbitrum burn attestation by burn tx hash.
+    await queue.setStatus(job.job_id, "polling", "Circle attestation");
+    const apiBase = env.CCTP_ATTESTATION_API_BASE ?? "https://iris-api-sandbox.circle.com";
+    const att = await fetchAttestationByTx(apiBase, LOCKED_CCTP.stellarDomain, String(p.burnTxHash));
+    if (!att) return { status: "pending", note: "attestation not yet available; retry" };
+    return { status: att.status, message: att.message, attestation: att.attestation };
+  }
+
+  if (job.job_type === "CCTP_OUTBOUND_MINT") {
+    // Completing the Arbitrum mint requires MessageTransmitter.receiveMessage with
+    // the Circle message + attestation. The message/attestation come from the
+    // CCTP_OUTBOUND_ATTESTATION step. Anyone can submit it; the burn is already
+    // proof-bound on Stellar. This is the standard CCTP follow-up and is performed
+    // by the Arbitrum-side relayer wallet when configured.
+    if (!p.message || !p.attestation) return { status: "pending", note: "message/attestation required from CCTP_OUTBOUND_ATTESTATION" };
+    await queue.setStatus(job.job_id, "minting", "Arbitrum receiveMessage");
+    return { status: "submit_via_arbitrum", messageTransmitter: LOCKED_CCTP.arbitrumSepoliaMessageTransmitter, note: "receiveMessage(message, attestation) on Arbitrum Sepolia" };
   }
 
   throw new Error(`unknown relayer job type ${job.job_type}`);

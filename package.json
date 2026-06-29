@@ -26,7 +26,7 @@
     "root-auditor:dev": "tsx apps/root-auditor/src/server.ts",
     "root-auditor:audit": "tsx apps/root-auditor/src/audit-once.ts",
     "root-auditor:test": "tsx apps/root-auditor/src/audit-test.ts",
-    "services:test": "tsx apps/root-auditor/src/audit-test.ts",
+    "services:test": "npm run prover:test && npm run relayer:test && npm run root-auditor:test",
     "cctp:inbound:e2e": "tsx apps/cli/src/cctp-inbound-e2e.ts",
     "zk:withdraw:e2e": "tsx apps/cli/src/zk-withdraw-e2e.ts",
     "zk:transfer:e2e": "tsx apps/cli/src/private-transfer-e2e.ts",

@@ -74,3 +74,41 @@ export const cctpExitSchema = z.object({
   amount_usdc_7dp: z.string().regex(/^\d+$/),
   relayer_fee: z.string().regex(/^\d+$/)
 });
+
+// ---- PHASE 2 auth / user schemas ----
+
+export const authNonceSchema = z.object({
+  wallet_type: z.enum(["EVM", "STELLAR"]),
+  address: z.string().min(1)
+});
+
+export const authVerifySchema = z.object({
+  address: z.string().min(1),
+  signature: z.string().min(1),
+  nonce: z.string().min(1)
+});
+
+export const updateMeSchema = z.object({
+  display_name: z.string().max(100).optional(),
+  email: z.string().email().max(200).optional(),
+  avatar_url: z.string().url().max(500).optional(),
+  preferences: z.record(z.unknown()).optional()
+});
+
+export const addWalletSchema = z.object({
+  wallet_type: z.enum(["EVM", "STELLAR"]),
+  address: z.string().min(1),
+  signature: z.string().min(1),
+  nonce: z.string().min(1)
+});
+
+export const noteBackupSchema = z.object({
+  commitment: z.string().min(1),
+  encrypted_payload: z.string().min(1),
+  encryption_version: z.string().default("v1")
+});
+
+export const requestQuotesSchema = z.object({
+  amount: z.string().regex(/^\d+$/),
+  expiry_ledger: z.number().int().positive().optional()
+});

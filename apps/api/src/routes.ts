@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { LOCKED_CCTP, usdc6ToStellar7, validateInboundRoute } from "@shade/cctp-utils";
 import { generateNotePreimage, poseidonCommitment } from "@shade/note-crypto";
 import { hashJson, deterministicId } from "@shade/shared-types/ids";
@@ -7,16 +7,30 @@ import { intentSchema, quoteSchema } from "@shade/rfq-types";
 import { JobQueue } from "@shade/queue";
 import { Store } from "./db.js";
 import {
+  authMessage, clearSessionCookie, newSessionToken, normalizeAddress,
+  NONCE_TTL, optionalUser, readSessionToken, requireUser, SESSION_TTL, setSessionCookie,
+  sha256Hex, verifyWalletSignature, type WalletType
+} from "./auth.js";
+import {
+  addWalletSchema,
+  authNonceSchema,
+  authVerifySchema,
   cctpExitSchema,
   fillSchema,
   idempotencyHeader,
   lockSchema,
+  noteBackupSchema,
   prepareDepositSchema,
   proofRequestSchema,
   quoteAcceptanceSchema,
+  requestQuotesSchema,
   settlementSchema,
+  updateMeSchema,
   withdrawalSchema
 } from "./schemas.js";
+
+const CHAIN_FOR: Record<WalletType, string> = { EVM: "arbitrum-sepolia", STELLAR: "stellar-testnet" };
+function randomNonce(): string { return randomUUID().replace(/-/g, ""); }
 
 function idem(request: FastifyRequest): string {
   return idempotencyHeader.parse(request.headers)["idempotency-key"];
@@ -48,6 +62,90 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   }));
   app.get("/v1/balances/testnet", async () => ({ status: "requires setup:testnet for live balances" }));
   app.post("/v1/setup/validate", async () => ({ status: "run npm run setup:testnet" }));
+
+  // Full health: DB + queue reachability + configured contracts.
+  app.get("/v1/health/full", async () => {
+    let db = false;
+    try { await store.health(); db = true; } catch { /* down */ }
+    return { ok: db, db, pool: process.env.SHIELDED_POOL_CONTRACT ?? null, network: process.env.STELLAR_NETWORK_PASSPHRASE ?? "testnet" };
+  });
+
+  // ---- Authentication (wallet-signature) ----
+  app.post("/v1/auth/nonce", async (request) => {
+    const body = authNonceSchema.parse(request.body);
+    const address = normalizeAddress(body.wallet_type, body.address);
+    const nonce = randomNonce();
+    const message = authMessage(body.wallet_type, address, nonce);
+    await store.createNonce(body.wallet_type, address, nonce, message, new Date(Date.now() + NONCE_TTL));
+    return { wallet_type: body.wallet_type, address, nonce, message };
+  });
+
+  const verifyHandler = (walletType: WalletType) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = authVerifySchema.parse(request.body);
+    const address = normalizeAddress(walletType, body.address);
+    const message = await store.consumeNonce(walletType, address, body.nonce);
+    if (!message) { reply.code(401); return { error: "invalid or expired nonce" }; }
+    if (!verifyWalletSignature(walletType, address, message, body.signature)) { reply.code(401); return { error: "signature verification failed" }; }
+    const userId = await store.upsertUserByWallet(walletType, CHAIN_FOR[walletType], address);
+    const token = newSessionToken();
+    await store.createSession(userId, sha256Hex(token), new Date(Date.now() + SESSION_TTL));
+    await store.logActivity(userId, { event_type: "auth.login", entity_type: "wallet", entity_id: address, metadata: { walletType } });
+    setSessionCookie(reply, token);
+    return { user_id: userId, session_token: token, wallet_type: walletType, address };
+  };
+  app.post("/v1/auth/evm/verify", verifyHandler("EVM"));
+  app.post("/v1/auth/stellar/verify", verifyHandler("STELLAR"));
+
+  app.get("/v1/auth/session", async (request) => {
+    const userId = await optionalUser(store, request);
+    return { authenticated: !!userId, user_id: userId };
+  });
+  app.post("/v1/auth/logout", async (request, reply) => {
+    const token = readSessionToken(request);
+    if (token) await store.revokeSession(sha256Hex(token));
+    clearSessionCookie(reply);
+    return { ok: true };
+  });
+
+  // ---- User profile + wallets ----
+  app.get("/v1/me", async (request) => {
+    const userId = await requireUser(store, request);
+    return store.getUser(userId);
+  });
+  app.patch("/v1/me", async (request) => {
+    const userId = await requireUser(store, request);
+    const body = updateMeSchema.parse(request.body);
+    await store.updateUser(userId, body);
+    return store.getUser(userId);
+  });
+  app.get("/v1/me/wallets", async (request) => {
+    const userId = await requireUser(store, request);
+    return { wallets: await store.listWallets(userId) };
+  });
+  app.post("/v1/me/wallets", async (request, reply) => {
+    const userId = await requireUser(store, request);
+    const body = addWalletSchema.parse(request.body);
+    const address = normalizeAddress(body.wallet_type, body.address);
+    const message = await store.consumeNonce(body.wallet_type, address, body.nonce);
+    if (!message || !verifyWalletSignature(body.wallet_type, address, message, body.signature)) { reply.code(401); return { error: "wallet signature verification failed" }; }
+    const walletId = await store.addWallet(userId, body.wallet_type, CHAIN_FOR[body.wallet_type], address);
+    await store.logActivity(userId, { event_type: "wallet.add", entity_type: "wallet", entity_id: address });
+    return { wallet_id: walletId };
+  });
+  app.delete("/v1/me/wallets/:wallet_id", async (request, reply) => {
+    const userId = await requireUser(store, request);
+    const ok = await store.deleteWallet(userId, (request.params as { wallet_id: string }).wallet_id);
+    if (!ok) { reply.code(409); return { error: "cannot delete (not found or primary)" }; }
+    return { ok: true };
+  });
+
+  // ---- Per-user history ----
+  app.get("/v1/me/deposits", async (request) => ({ deposits: await store.listByUser("cctp_deposits", await requireUser(store, request)) }));
+  app.get("/v1/me/notes", async (request) => ({ notes: await store.listByUser("note_commitments", await requireUser(store, request)) }));
+  app.get("/v1/me/withdrawals", async (request) => ({ withdrawals: await store.listByUser("withdrawals", await requireUser(store, request)) }));
+  app.get("/v1/me/rfq", async (request) => ({ settlements: await store.listByUser("settlements", await requireUser(store, request)) }));
+  app.get("/v1/me/cctp-exits", async (request) => ({ exits: await store.listByUser("cctp_exits", await requireUser(store, request)) }));
+  app.get("/v1/me/note-backups", async (request) => ({ backups: await store.listByUser("encrypted_note_backups", await requireUser(store, request)) }));
 
   app.post("/v1/deposits/prepare", async (request) => {
     const body = prepareDepositSchema.parse(request.body);
@@ -85,18 +183,26 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       state: "prepared"
     });
     await store.transition({ entityType: "cctp_deposit", entityId: depositId, toState: "prepared" });
+    const userId = await optionalUser(store, request);
+    if (userId) { await store.setRowUser("cctp_deposits", "deposit_id", depositId, userId); await store.logActivity(userId, { event_type: "deposit.prepare", entity_type: "deposit", entity_id: depositId }); }
     return { deposit_id: depositId, commitment, amount_usdc_7dp: amount7.toString() };
   });
 
   app.get("/v1/deposits/:deposit_id", async (request) => store.getById("cctp_deposits", "deposit_id", (request.params as { deposit_id: string }).deposit_id));
-  // Enqueue the real CCTP inbound to the relayer (burn -> attestation ->
-  // mint_and_forward -> register-note + deposit proof). The body carries the note
-  // commitment/coin path + amount; the relayer worker performs the whole flow.
-  app.post("/v1/deposits/:deposit_id/process", async (request) => {
-    const depositId = (request.params as { deposit_id: string }).deposit_id;
-    const job = await queue.enqueue("relayer", "CCTP_INBOUND", (request.body ?? {}) as Record<string, unknown>, `deposit-inbound:${depositId}`);
-    return { deposit_id: depositId, job_id: job.job_id, status: "queued" };
-  });
+  // Composite inbound: burn -> attestation -> mint_and_forward -> register-note
+  // (+ deposit proof) in one relayer job. The granular sub-steps below enqueue the
+  // individual relayer job types for clients that drive the flow step by step.
+  const depositStep = (suffix: string, jobType: string) =>
+    app.post(`/v1/deposits/:deposit_id/${suffix}`, async (request) => {
+      const depositId = (request.params as { deposit_id: string }).deposit_id;
+      const job = await queue.enqueue("relayer", jobType, { deposit_id: depositId, ...(request.body as object) }, `${jobType}:${depositId}`);
+      return { deposit_id: depositId, job_id: job.job_id, status: "queued" };
+    });
+  depositStep("process", "CCTP_INBOUND");
+  depositStep("submit-burn", "CCTP_INBOUND_BURN");
+  depositStep("fetch-attestation", "CCTP_FETCH_ATTESTATION");
+  depositStep("mint-forward", "STELLAR_MINT_FORWARD");
+  depositStep("register-note", "REGISTER_NOTE");
 
   app.post("/v1/notes/local/derive", async (request) => {
     const note = generateNotePreimage(request.body as never);
@@ -104,6 +210,14 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   app.post("/v1/notes/commitment", async (request) => ({ commitment: await poseidonCommitment(request.body as never) }));
   app.get("/v1/notes/:commitment/status", async (request) => store.getById("note_commitments", "commitment", (request.params as { commitment: string }).commitment));
+  // Client-side-encrypted note backup (server never sees plaintext or note secrets).
+  app.post("/v1/notes/encrypted-backup", async (request) => {
+    const userId = await requireUser(store, request);
+    const body = noteBackupSchema.parse(request.body);
+    await store.addNoteBackup(userId, body.commitment, body.encrypted_payload, body.encryption_version);
+    await store.logActivity(userId, { event_type: "note.backup", entity_type: "note", entity_id: body.commitment });
+    return { ok: true, commitment: body.commitment };
+  });
 
   app.post("/v1/proofs/:kind/request", async (request) => {
     const body = proofRequestSchema.parse({ ...(request.body as object), proof_type: (request.params as { kind: string }).kind });
@@ -157,10 +271,33 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       state: "INTENT_CREATED"
     });
     await store.transition({ entityType: "intent", entityId: intentHash, toState: "INTENT_CREATED" });
+    const userId = await optionalUser(store, request);
+    if (userId) { await store.setRowUser("intents", "intent_hash", intentHash, userId); await store.logActivity(userId, { event_type: "intent.create", entity_type: "intent", entity_id: intentHash }); }
     return { intent_hash: intentHash };
   });
   app.get("/v1/intents/:intent_hash", async (request) => store.getById("intents", "intent_hash", (request.params as { intent_hash: string }).intent_hash));
-  app.get("/v1/intents/:intent_hash/quotes", async () => ({ status: "query quotes by intent_hash via database view" }));
+  app.get("/v1/intents/:intent_hash/quotes", async (request) => ({ quotes: await store.listQuotesByIntent((request.params as { intent_hash: string }).intent_hash) }));
+  // Ask the solver service for a quote on an intent. If SOLVER_URL is configured we
+  // call the real solver; the returned quote is persisted. Otherwise returns the
+  // quotes already recorded for the intent.
+  app.post("/v1/intents/:intent_hash/request-quotes", async (request) => {
+    const intentHash = (request.params as { intent_hash: string }).intent_hash;
+    const body = requestQuotesSchema.parse(request.body);
+    if (process.env.SOLVER_URL) {
+      const resp = await fetch(`${process.env.SOLVER_URL}/v1/quote`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intent_hash: intentHash, amount: body.amount, expiry_ledger: body.expiry_ledger })
+      });
+      if (!resp.ok) { const e = new Error(`solver responded ${resp.status}`) as Error & { statusCode: number }; e.statusCode = 502; throw e; }
+      const sq = await resp.json() as { quote: Record<string, unknown>; quote_hash: string; solver_pubkey: string; solver_sig: string };
+      await store.insertGeneric("quotes", {
+        quote_id: sq.quote.quote_id, intent_hash: intentHash, quote_hash: sq.quote_hash, solver_id: sq.quote.solver_id,
+        payload: sq.quote, quote_signature: sq.solver_sig, valid_until_ledger: sq.quote.valid_until_ledger, state: "QUOTE_RECEIVED"
+      });
+      return { requested: true, quote_id: sq.quote.quote_id };
+    }
+    return { requested: false, reason: "SOLVER_URL not configured", quotes: await store.listQuotesByIntent(intentHash) };
+  });
   app.post("/v1/solver/quotes", async (request) => {
     const body = quoteSchema.parse(request.body);
     const quoteHash = hashJson(body);
@@ -200,12 +337,25 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     await store.transition({ entityType: "fill", entityId: fillId, toState: "FILL_CREATED" });
     return { fill_id: fillId };
   });
+  // Record execution of a fill (the solver performed the real destination-chain
+  // payout and reports its tx hash). Marks the fill EXECUTED.
+  app.post("/v1/fills/:fill_id/execute", async (request, reply) => {
+    const fillId = (request.params as { fill_id: string }).fill_id;
+    const b = (request.body ?? {}) as { destination_tx_hash?: string };
+    if (!b.destination_tx_hash) { reply.code(400); return { error: "destination_tx_hash required" }; }
+    const ok = await store.executeFill(fillId, b.destination_tx_hash);
+    if (!ok) { reply.code(404); return { error: "fill not found" }; }
+    await store.transition({ entityType: "fill", entityId: fillId, toState: "FILL_EXECUTED", txHash: b.destination_tx_hash });
+    return { fill_id: fillId, state: "EXECUTED", destination_tx_hash: b.destination_tx_hash };
+  });
   app.post("/v1/rfq/settle", async (request) => {
     await assertRootHealthy(store);
     const body = settlementSchema.parse(request.body);
     const settlementId = deterministicId({ namespace: "settle", parts: [body.intent_hash, body.quote_id, body.nullifier] });
     await store.insertGeneric("settlements", { settlement_id: settlementId, ...body, state: "SETTLEMENT_SUBMITTED" });
     await store.transition({ entityType: "settlement", entityId: settlementId, toState: "SETTLEMENT_SUBMITTED" });
+    const userId = await optionalUser(store, request);
+    if (userId) { await store.setRowUser("settlements", "settlement_id", settlementId, userId); await store.logActivity(userId, { event_type: "rfq.settle", entity_type: "settlement", entity_id: settlementId }); }
     return { settlement_id: settlementId };
   });
   app.get("/v1/settlements/:settlement_id", async (request) => store.getById("settlements", "settlement_id", (request.params as { settlement_id: string }).settlement_id));
@@ -217,6 +367,8 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const exitId = deterministicId({ namespace: "exit", parts: [idempotencyKey, body.nullifier] });
     await store.insertGeneric("cctp_exits", { exit_id: exitId, idempotency_key: idempotencyKey, ...body, state: "prepared" });
     await store.transition({ entityType: "cctp_exit", entityId: exitId, toState: "prepared" });
+    const userId = await optionalUser(store, request);
+    if (userId) { await store.setRowUser("cctp_exits", "exit_id", exitId, userId); await store.logActivity(userId, { event_type: "cctp_exit.prepare", entity_type: "cctp_exit", entity_id: exitId }); }
     return { exit_id: exitId };
   });
   // Submit a prepared withdraw_cctp proof via the relayer (proof-bound outbound burn).
@@ -226,7 +378,40 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const job = await queue.enqueue("relayer", "WITHDRAW_CCTP_BURN", b, b.idempotency_key ? `exit-submit:${b.idempotency_key}` : undefined);
     return { job_id: job.job_id, status: "queued" };
   });
+  // Granular outbound steps for clients driving the CCTP exit step by step.
+  app.post("/v1/cctp/outbound/:exit_id/fetch-attestation", async (request) => {
+    const exitId = (request.params as { exit_id: string }).exit_id;
+    const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_ATTESTATION", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_ATTESTATION:${exitId}`);
+    return { exit_id: exitId, job_id: job.job_id, status: "queued" };
+  });
+  app.post("/v1/cctp/outbound/:exit_id/complete-mint", async (request) => {
+    const exitId = (request.params as { exit_id: string }).exit_id;
+    const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_MINT", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_MINT:${exitId}`);
+    return { exit_id: exitId, job_id: job.job_id, status: "queued" };
+  });
   app.get("/v1/cctp/outbound/:exit_id", async (request) => store.getById("cctp_exits", "exit_id", (request.params as { exit_id: string }).exit_id));
+
+  // ---- Activity timeline + live stream ----
+  app.get("/v1/activity", async (request) => {
+    const userId = await requireUser(store, request);
+    return { activity: await store.listActivity(userId) };
+  });
+  // Server-Sent Events stream of the authenticated user's activity (polls the DB).
+  app.get("/v1/activity/stream", async (request, reply) => {
+    const userId = await requireUser(store, request);
+    reply.raw.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+    let lastSent = "";
+    const send = async () => {
+      const rows = await store.listActivity(userId, 20);
+      const payload = JSON.stringify(rows);
+      if (payload !== lastSent) { lastSent = payload; reply.raw.write(`data: ${payload}\n\n`); }
+    };
+    await send();
+    const timer = setInterval(() => { void send(); }, Number(process.env.ACTIVITY_STREAM_INTERVAL_MS ?? "3000"));
+    request.raw.on("close", () => clearInterval(timer));
+    return reply;
+  });
+
   app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.generated.md" }));
 }
 
@@ -245,6 +430,8 @@ async function createWithdrawal(request: FastifyRequest, store: Store) {
     state: "prepared"
   });
   await store.transition({ entityType: "withdrawal", entityId: withdrawalId, toState: "prepared" });
+  const userId = await optionalUser(store, request);
+  if (userId) { await store.setRowUser("withdrawals", "withdrawal_id", withdrawalId, userId); await store.logActivity(userId, { event_type: "withdrawal.prepare", entity_type: "withdrawal", entity_id: withdrawalId }); }
   return { withdrawal_id: withdrawalId };
 }
 

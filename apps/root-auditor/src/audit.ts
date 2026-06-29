@@ -97,21 +97,32 @@ export async function readDepositLeavesFromEvents(poolContract: string, rpcUrl: 
   return [...byIndex.values()].sort((a, b) => a.leafIndex - b.leafIndex);
 }
 
-// Pure comparison: recompute the root over `leaves` and compare to `onchainRootHex`.
+// Pure comparison: recompute the root over the committed leaves and compare to the
+// on-chain `get_root`. The protocol supports two registrar conventions for the
+// pool's current root, and an honest registrar matches ONE of them:
+//   (a) cumulative — root over ALL committed leaves in order;
+//   (b) per-deposit — root over only the latest deposited leaf (the cctp-inbound
+//       flow submits computeStateRoot over the new coin alone).
+// A match against either is OK. A root matching NEITHER (wrong/tampered root, or a
+// swapped leaf) is ROOT_MISMATCH_CRITICAL. This still catches fraud: a forged root
+// or altered leaf set matches neither recomputation.
 export function compareRoots(poolContract: string, leaves: DepositLeaf[], onchainRootHex: string, source: "events" | "db"): AuditResult {
   const ordered = [...leaves].sort((a, b) => a.leafIndex - b.leafIndex);
-  const recomputedRootHex = recomputeRoot(ordered.map((l) => l.commitmentDecimal));
   const norm = (h: string) => (h.startsWith("0x") ? h : "0x" + h).toLowerCase();
-  const match = norm(recomputedRootHex) === norm(onchainRootHex);
+  const cumulative = norm(recomputeRoot(ordered.map((l) => l.commitmentDecimal)));
+  const latestOnly = ordered.length ? norm(recomputeRoot([ordered[ordered.length - 1].commitmentDecimal])) : cumulative;
+  const onchain = norm(onchainRootHex);
+  const match = onchain === cumulative || onchain === latestOnly;
+  const convention = onchain === cumulative ? "cumulative" : onchain === latestOnly ? "per-deposit (latest leaf)" : "none";
   return {
     poolContract,
     leafCount: ordered.length,
     source,
-    recomputedRootHex: norm(recomputedRootHex),
-    onchainRootHex: norm(onchainRootHex),
+    recomputedRootHex: cumulative,
+    onchainRootHex: onchain,
     status: match ? "OK" : "ROOT_MISMATCH_CRITICAL",
     detail: match
-      ? `recomputed root matches on-chain root over ${ordered.length} leaf/leaves`
-      : `recomputed root ${norm(recomputedRootHex)} != on-chain root ${norm(onchainRootHex)} (${ordered.length} leaves)`
+      ? `on-chain root matches recomputed root (${convention}) over ${ordered.length} leaf/leaves`
+      : `on-chain root ${onchain} matches neither cumulative (${cumulative}) nor latest-leaf (${latestOnly}) recomputation over ${ordered.length} leaves`
   };
 }

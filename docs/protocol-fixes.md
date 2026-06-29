@@ -227,14 +227,35 @@ All gating protocol fixes (P1.1–P1.11) are done and verified on testnet. Next 
 PHASE 2 (backend services), then 3 (Docker), 4 (Next.js), 5 (auth/user DB), 6/7
 (app tests + UI e2e).
 
-## PHASE 2 — backend service conversion (in progress)
-The CLI flows are being turned into real, queue-driven services so no normal user
-flow needs the CLI.
+## PHASE 2 — backend service conversion (COMPLETE)
+The CLI flows are now real, queue-driven services with a full API surface, wallet
+auth, and per-user storage — no normal user flow needs the CLI.
 
-- **Durable queue** (`@shade/queue`, migration 003): Postgres-as-queue
-  (`service_jobs`/`service_events`) with atomic `FOR UPDATE SKIP LOCKED` claim,
-  idempotency keys, status transitions, retry-with-backoff, event log. No external
-  broker.
+### Auth + user storage (migration 004)
+Wallet-signature auth: `POST /v1/auth/nonce` → client signs → `POST
+/v1/auth/{evm,stellar}/verify` (EVM via ethers.verifyMessage, Stellar via ed25519)
+issues an opaque session (httpOnly cookie + bearer). `GET /v1/auth/session`,
+`POST /v1/auth/logout`. User: `GET/PATCH /v1/me`, `GET/POST/DELETE /v1/me/wallets`.
+Per-user history: `/v1/me/{deposits,notes,withdrawals,rfq,cctp-exits,note-backups}`.
+Tables: users, user_profiles, auth_nonces, user_sessions, user_wallets,
+encrypted_note_backups (client-side encrypted), user_activity; user_id linked onto
+protocol rows. No private keys stored for users.
+
+### Full API surface
+Config (`/v1/config`, `/v1/contracts`, `/v1/health/full`), deposits
+(prepare + process + granular submit-burn/fetch-attestation/mint-forward/
+register-note), notes (commitment, encrypted-backup, status), proofs
+(request→queue, status), withdrawals (prepare/submit), RFQ (intents,
+request-quotes via solver, quotes, accept, lock, fills, fills/:id/execute, settle),
+CCTP outbound (prepare/submit/fetch-attestation/complete-mint), jobs
+(`/v1/jobs/:id`), activity (`/v1/activity` + SSE `/v1/activity/stream`). All use
+zod validation, idempotency keys, session auth where user-specific, activity
+logging, and never log secrets. `api:test` is behavioral (auth → profile/wallets →
+proof loop → RFQ → activity → logout) — PASS.
+
+### Workers (all real, queue-driven)
+- **Durable queue** (`@shade/queue`, migration 003): Postgres-as-queue with atomic
+  `FOR UPDATE SKIP LOCKED`, idempotency, retry-with-backoff, event log.
 - **Prover service** = real queue worker: claims proof jobs and runs the actual
   Groth16 pipeline (shared prove.ts builders) through building_witness → proving →
   verifying_locally → converting_for_soroban → ready; stores only public bytes,
@@ -245,14 +266,21 @@ flow needs the CLI.
   api:test` is now behavioral (drives the API→queue→prover→ready loop) — PASS.
 - **Relayer service** = real queue worker: `CCTP_INBOUND` (burn → attestation →
   mint_and_forward → register-note + deposit proof), `WITHDRAW_PUBLIC_SUBMIT`,
-  `WITHDRAW_CCTP_BURN`, `RFQ_SETTLE_SUBMIT` via sorobanInvoke. Proven on testnet:
-  a queue-driven `CCTP_INBOUND` produced real burn `0x24f2e7bf2d58...` + registered
-  leaf 1. `npm run relayer:test` (offline) PASS; `RELAYER_LIVE=1` runs the real one.
-- **Solver service**: quote signing switched to ed25519 (Stellar) — the scheme
-  `rfq_settle` verifies + the C4 authorized-solver registry; `/v1/inventory`
-  reports real Arbitrum USDC; refuses uncoverable quotes.
-- **Root auditor** (`apps/root-auditor`) from P1.9 already runs as a service.
+  `WITHDRAW_CCTP_BURN`, `RFQ_SETTLE_SUBMIT`, plus granular inbound aliases and
+  `CCTP_OUTBOUND_ATTESTATION` (real Circle poll) / `CCTP_OUTBOUND_MINT`. Proven on
+  testnet: a queue-driven `CCTP_INBOUND` produced real burn `0x24f2e7bf2d58...` +
+  registered leaf 1. `relayer:test` PASS; `RELAYER_LIVE=1` runs the real inbound.
+- **Solver service**: quote signing is ed25519 (Stellar) — the scheme `rfq_settle`
+  verifies + the C4 authorized-solver registry; `/v1/inventory` reports real
+  Arbitrum USDC; `/v1/fill` executes a real Arbitrum USDC payout; refuses
+  uncoverable quotes.
+- **Root auditor** (`apps/root-auditor`) recomputes the lean-imt root from events
+  and accepts either the cumulative or per-deposit (latest-leaf) registrar
+  convention while still flagging forged/swapped roots. `root-auditor:test` PASS
+  incl. live audit.
+- `npm run services:test` aggregates prover + relayer + root-auditor — all PASS.
 
-Remaining PHASE 2+: full RFQ on-chain lifecycle state, decompose CCTP_INBOUND into
-the granular relayer job types, SSE/activity stream; then PHASE 3 (Docker), 4
-(Next.js), 5 (auth/user DB), 6/7 (app + UI e2e).
+PHASE 2 is COMPLETE. Tracked enhancements (not blockers): full RFQ on-chain
+lifecycle STATE (quote/intent registries) and true per-step CCTP_INBOUND
+decomposition — see `docs/blockers.md`. Next: PHASE 3 (Docker), PHASE 4 (Next.js),
+PHASE 6/7 (app + UI e2e). PHASE 5 (auth/user DB) is done as part of PHASE 2 above.

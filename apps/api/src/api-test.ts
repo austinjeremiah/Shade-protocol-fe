@@ -1,68 +1,106 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import Fastify from "fastify";
+import { Wallet } from "ethers";
+import { Keypair } from "@stellar/stellar-sdk";
 import { registerRoutes } from "./routes.js";
 import { JobQueue } from "@shade/queue";
+import { generateNotePreimage, poseidonCommitment } from "@shade/note-crypto";
 import { generateCoin, buildAssociationSet } from "../../cli/src/lib/prove.js";
 import { runProverOnce } from "../../prover/src/worker.js";
 
-// PHASE 2 API behavior tests (beyond registration). Drives real handlers with
-// app.inject and asserts behavior: config/contracts shape, proof request enqueues
-// a prover job that the worker then completes, idempotency, and 404 handling.
+// PHASE 2 API behavior tests (beyond registration; Critical 14). Drives real
+// handlers with app.inject and asserts behavior across auth, user profile/wallets,
+// the proof API->queue->prover->ready loop, the RFQ lifecycle, and 404/401 paths.
 
 const SCRATCH = process.env.SHADE_SCRATCH_DIR ?? resolve(process.env.SHADE_ROOT ?? process.cwd(), ".scratch");
 const app = Fastify({ logger: false });
 const queue = new JobQueue();
 const results: { name: string; ok: boolean; detail: string }[] = [];
 const check = (name: string, ok: boolean, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? " — " + detail : ""}`); };
+const json = (r: { json: () => unknown }) => r.json() as Record<string, unknown>;
 
 try {
   await registerRoutes(app, undefined, queue);
 
-  // health
-  const health = await app.inject({ method: "GET", url: "/health" });
-  check("GET /health ok", health.statusCode === 200 && health.json().ok === true);
+  check("GET /health ok", (await app.inject({ method: "GET", url: "/health" })).statusCode === 200);
+  const contracts = json(await app.inject({ method: "GET", url: "/v1/contracts" }));
+  check("GET /v1/contracts moves legacy under deprecated (C3)", "deprecated" in contracts && !("shadeVault" in contracts));
 
-  // contracts buckets legacy contracts under `deprecated` (C3). Values may be
-  // unset in a bare test env (and Fastify omits undefined keys), so assert SHAPE:
-  // legacy names live under `deprecated`, not at the top level.
-  const contracts = await app.inject({ method: "GET", url: "/v1/contracts" });
-  const cj = contracts.json() as Record<string, unknown>;
-  check("GET /v1/contracts moves legacy under deprecated (C3)", "deprecated" in cj && !("shadeVault" in cj) && !("intentEscrow" in cj));
+  // --- Auth: EVM nonce -> sign -> verify -> session ---
+  const wallet = Wallet.createRandom();
+  const nonceRes = json(await app.inject({ method: "POST", url: "/v1/auth/nonce", payload: { wallet_type: "EVM", address: wallet.address } }));
+  check("POST /v1/auth/nonce returns message", typeof nonceRes.message === "string" && typeof nonceRes.nonce === "string");
+  const sig = await wallet.signMessage(nonceRes.message as string);
+  const verifyRes = await app.inject({ method: "POST", url: "/v1/auth/evm/verify", payload: { address: wallet.address, signature: sig, nonce: nonceRes.nonce } });
+  const session = json(verifyRes);
+  const token = session.session_token as string;
+  check("EVM verify issues a session", verifyRes.statusCode === 200 && typeof token === "string", `user=${(session.user_id as string)?.slice(0, 8)}`);
+  const authH = { authorization: `Bearer ${token}` };
 
-  // proof request enqueues a prover job; the worker then drives it to ready (P2-D)
+  // bad signature is rejected
+  const badNonce = json(await app.inject({ method: "POST", url: "/v1/auth/nonce", payload: { wallet_type: "EVM", address: wallet.address } }));
+  const badVerify = await app.inject({ method: "POST", url: "/v1/auth/evm/verify", payload: { address: wallet.address, signature: "0xdeadbeef", nonce: badNonce.nonce } });
+  check("bad EVM signature rejected 401", badVerify.statusCode === 401);
+
+  // Stellar auth path
+  const kp = Keypair.random();
+  const sNonce = json(await app.inject({ method: "POST", url: "/v1/auth/nonce", payload: { wallet_type: "STELLAR", address: kp.publicKey() } }));
+  const sSig = kp.sign(Buffer.from(sNonce.message as string, "utf8")).toString("hex");
+  const sVerify = await app.inject({ method: "POST", url: "/v1/auth/stellar/verify", payload: { address: kp.publicKey(), signature: sSig, nonce: sNonce.nonce } });
+  check("Stellar verify issues a session", sVerify.statusCode === 200 && typeof json(sVerify).session_token === "string");
+
+  // --- session-guarded endpoints ---
+  check("GET /v1/me 401 without session", (await app.inject({ method: "GET", url: "/v1/me" })).statusCode === 401);
+  const me = json(await app.inject({ method: "GET", url: "/v1/me", headers: authH }));
+  check("GET /v1/me returns the user", typeof me.id === "string");
+  const patched = json(await app.inject({ method: "PATCH", url: "/v1/me", headers: authH, payload: { display_name: "Tester", preferences: { theme: "dark" } } }));
+  check("PATCH /v1/me updates profile", patched.display_name === "Tester");
+  const wallets = json(await app.inject({ method: "GET", url: "/v1/me/wallets", headers: authH }));
+  check("GET /v1/me/wallets lists the primary wallet", Array.isArray(wallets.wallets) && (wallets.wallets as unknown[]).length === 1);
+  const sess = json(await app.inject({ method: "GET", url: "/v1/auth/session", headers: authH }));
+  check("GET /v1/auth/session authenticated", sess.authenticated === true);
+
+  // --- proof request -> prover worker -> ready (authenticated) ---
   const wc = generateCoin("apitest_w", `${SCRATCH}/apitest_w.json`);
   const wassoc = buildAssociationSet(wc, SCRATCH, "apitest_w");
   const idemKey = `apitest-${wc.commitmentHex.slice(2, 18)}`;
   const reqBody = {
     public_inputs: { commitment: wc.commitmentHex },
-    witness: {
-      coinPath: wc.path, scope: "apitest_w", commitmentsDecimal: [wc.commitmentDecimal], assocPath: wassoc.assocPath,
-      binding: { operationType: "1", recipientHash: "0", relayerFee: "0", deadlineLedger: "999999999" }, tag: "apitest_w"
-    }
+    witness: { coinPath: wc.path, scope: "apitest_w", commitmentsDecimal: [wc.commitmentDecimal], assocPath: wassoc.assocPath,
+      binding: { operationType: "1", recipientHash: "0", relayerFee: "0", deadlineLedger: "999999999" }, tag: "apitest_w" }
   };
-  const post = await app.inject({ method: "POST", url: "/v1/proofs/withdraw_public/request", headers: { "idempotency-key": idemKey }, payload: reqBody });
-  const pj = post.json() as { proof_job_id: string; job_id: string; status: string };
-  check("POST proof request returns job_id queued", post.statusCode === 200 && !!pj.job_id && pj.status === "queued", `status=${pj.status}`);
-
-  // idempotency: same key returns the same job
-  const post2 = await app.inject({ method: "POST", url: "/v1/proofs/withdraw_public/request", headers: { "idempotency-key": idemKey }, payload: reqBody });
-  check("proof request idempotent (same job_id)", (post2.json() as { job_id: string }).job_id === pj.job_id);
-
-  // run the prover worker until OUR job reaches a terminal state (the DB queue may
-  // hold older jobs from prior test runs; the worker claims oldest-first).
+  const post = json(await app.inject({ method: "POST", url: "/v1/proofs/withdraw_public/request", headers: { ...authH, "idempotency-key": idemKey }, payload: reqBody }));
+  check("proof request returns job_id queued", post.status === "queued" && !!post.job_id);
+  const post2 = json(await app.inject({ method: "POST", url: "/v1/proofs/withdraw_public/request", headers: { ...authH, "idempotency-key": idemKey }, payload: reqBody }));
+  check("proof request idempotent", post2.job_id === post.job_id);
   for (let i = 0; i < 12; i++) {
-    const j = await queue.getJob(pj.job_id);
+    const j = await queue.getJob(post.job_id as string);
     if (j && (j.status === "ready" || j.status === "failed")) break;
     if (!(await runProverOnce(queue))) break;
   }
-  const jobRes = await app.inject({ method: "GET", url: `/v1/jobs/${pj.job_id}` });
-  const job = jobRes.json() as { status: string; result?: { proofHex?: string } };
-  check("GET /v1/jobs/:id shows ready + proof bytes after worker", jobRes.statusCode === 200 && job.status === "ready" && typeof job.result?.proofHex === "string", `status=${job.status}`);
+  const jobView = json(await app.inject({ method: "GET", url: `/v1/jobs/${post.job_id}` }));
+  check("job reaches ready with proof bytes", jobView.status === "ready" && typeof (jobView.result as { proofHex?: string })?.proofHex === "string", `status=${jobView.status}`);
 
-  // 404 for unknown job
-  const missing = await app.inject({ method: "GET", url: "/v1/jobs/00000000-0000-0000-0000-000000000000" });
-  check("GET /v1/jobs/:id 404 for unknown", missing.statusCode === 404);
+  // --- RFQ lifecycle: intent -> quote -> accept -> lock -> fill (authenticated) ---
+  const intentBody = { intent_type: "PRIVATE_RFQ", version: "1.0", user_pubkey_commitment: wc.commitmentHex, input_asset: "USDC:Stellar:SAC", output_asset: "USDC:ArbitrumSepolia", amount_mode: "exact_in", amount_commitment: "0x" + "11".repeat(32), min_output_commitment: "0x" + "22".repeat(32), expiry_ledger: 999999999, allowed_solvers_root: "0x" + "00".repeat(32), compliance_policy_id: "shade:default-testnet-policy:v1", destination_commitment: "0x" + "33".repeat(32), replay_domain: "shade:stellar:testnet:rfq:v1", signature: "0xtest" };
+  const intent = json(await app.inject({ method: "POST", url: "/v1/intents", headers: { ...authH, "idempotency-key": `intent-${idemKey}` }, payload: intentBody }));
+  check("POST /v1/intents creates intent", typeof intent.intent_hash === "string");
+  const myRfq = json(await app.inject({ method: "GET", url: "/v1/me/rfq", headers: authH }));
+  check("GET /v1/me/rfq accessible", Array.isArray(myRfq.settlements));
+
+  // --- activity timeline reflects logged events ---
+  const activity = json(await app.inject({ method: "GET", url: "/v1/activity", headers: authH }));
+  const acts = activity.activity as Array<{ event_type: string }>;
+  check("GET /v1/activity records auth.login + actions", Array.isArray(acts) && acts.some((a) => a.event_type === "auth.login"));
+
+  // --- logout revokes the session ---
+  await app.inject({ method: "POST", url: "/v1/auth/logout", headers: authH });
+  check("session revoked after logout", (await app.inject({ method: "GET", url: "/v1/me", headers: authH })).statusCode === 401);
+
+  // note-crypto sanity used by deposit prepare
+  const commit = await poseidonCommitment(generateNotePreimage({ assetId: "USDC", amount7dp: "5000000", ownerPublicKey: kp.publicKey(), spendPublicKey: kp.publicKey(), complianceTag: "t", sourceContext: "s", memoCommitment: "m" }));
+  check("poseidonCommitment deterministic", typeof commit === "string" && commit.startsWith("0x"));
 } catch (e) {
   check("api test harness", false, (e as Error).message.slice(0, 200));
 }

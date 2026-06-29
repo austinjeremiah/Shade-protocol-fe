@@ -47,11 +47,16 @@ try {
   // Offline: invalid relayer job -> failed (no crash). max_attempts=3, so drain
   // until terminal 'failed'.
   const bad = await queue.enqueue("relayer", "WITHDRAW_PUBLIC_SUBMIT", { to: "G_BOGUS", proofHex: "00", publicHex: "00" });
-  await runRelayerOnce(queue);
-  const badJob = await queue.getJob(bad.job_id);
-  // The worker caught the on-chain error and marked the job failed (failed_retry
-  // until attempts are exhausted, then terminal failed) — the loop did not crash.
-  check("invalid relayer job marked failed (not crashed)", badJob?.status === "failed" || badJob?.status === "failed_retry", `status=${badJob?.status}`);
+  // Loop the worker until OUR job is claimed+failed (the shared DB queue may hold
+  // older jobs; the worker claims oldest-first). failed_retry/failed both mean the
+  // worker caught the on-chain error and did not crash.
+  let badStatus = "queued";
+  for (let i = 0; i < 30; i++) {
+    badStatus = (await queue.getJob(bad.job_id))?.status ?? "queued";
+    if (badStatus === "failed" || badStatus === "failed_retry") break;
+    if (!(await runRelayerOnce(queue))) break;
+  }
+  check("invalid relayer job marked failed (not crashed)", badStatus === "failed" || badStatus === "failed_retry", `status=${badStatus}`);
 
   if (process.env.RELAYER_LIVE === "1") {
     const env = loadEnv();

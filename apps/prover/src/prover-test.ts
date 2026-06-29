@@ -14,8 +14,13 @@ const check = (name: string, ok: boolean, detail = "") => { results.push({ name,
 
 async function runJob(jobType: string, payload: Record<string, unknown>): Promise<{ status: string; result: Record<string, unknown> | null }> {
   const job = await queue.enqueue("prover", jobType, payload);
-  const did = await runProverOnce(queue);
-  if (!did) throw new Error("worker claimed no job");
+  // Loop until OUR job is terminal — the shared DB queue may hold older jobs and
+  // the worker claims oldest-first.
+  for (let i = 0; i < 20; i++) {
+    const j = await queue.getJob(job.job_id);
+    if (j && (j.status === "ready" || j.status === "failed")) break;
+    if (!(await runProverOnce(queue))) break;
+  }
   const done = await queue.getJob(job.job_id);
   return { status: done!.status, result: done!.result };
 }

@@ -106,4 +106,147 @@ export class Store {
       Object.values(row)
     );
   }
+
+  // ---- PHASE 2 auth / users ----
+
+  async createNonce(walletType: string, address: string, nonce: string, message: string, expiresAt: Date): Promise<void> {
+    await this.pool.query(
+      "insert into auth_nonces(wallet_type, address, nonce, message, expires_at) values ($1,$2,$3,$4,$5)",
+      [walletType, address, nonce, message, expiresAt]
+    );
+  }
+
+  // Consume a nonce: returns the signed message if it exists, is unconsumed and
+  // unexpired; marks it consumed atomically.
+  async consumeNonce(walletType: string, address: string, nonce: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ message: string }>(
+      `update auth_nonces set consumed_at = now()
+       where id = (select id from auth_nonces
+         where wallet_type=$1 and address=$2 and nonce=$3 and consumed_at is null and expires_at > now()
+         order by created_at desc for update skip locked limit 1)
+       returning message`,
+      [walletType, address, nonce]
+    );
+    return rows[0]?.message ?? null;
+  }
+
+  // Find or create the user owning this wallet; bump last_login; ensure a profile.
+  async upsertUserByWallet(walletType: string, chain: string, address: string): Promise<string> {
+    const existing = await this.pool.query<{ user_id: string }>("select user_id from user_wallets where wallet_type=$1 and address=$2", [walletType, address]);
+    if (existing.rows[0]) {
+      await this.pool.query("update users set last_login_at=now(), updated_at=now() where id=$1", [existing.rows[0].user_id]);
+      return existing.rows[0].user_id;
+    }
+    const user = await this.pool.query<{ id: string }>("insert into users(last_login_at) values (now()) returning id");
+    const userId = user.rows[0].id;
+    await this.pool.query("insert into user_profiles(user_id) values ($1) on conflict do nothing", [userId]);
+    await this.pool.query(
+      "insert into user_wallets(user_id, wallet_type, chain, address, is_primary, verified_at) values ($1,$2,$3,$4,true,now())",
+      [userId, walletType, chain, address]
+    );
+    return userId;
+  }
+
+  async createSession(userId: string, sessionHash: string, expiresAt: Date): Promise<void> {
+    await this.pool.query("insert into user_sessions(user_id, session_hash, expires_at) values ($1,$2,$3)", [userId, sessionHash, expiresAt]);
+  }
+
+  async userIdForSession(sessionHash: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ user_id: string }>(
+      "select user_id from user_sessions where session_hash=$1 and revoked_at is null and expires_at > now()",
+      [sessionHash]
+    );
+    return rows[0]?.user_id ?? null;
+  }
+
+  async revokeSession(sessionHash: string): Promise<void> {
+    await this.pool.query("update user_sessions set revoked_at=now() where session_hash=$1", [sessionHash]);
+  }
+
+  async getUser(userId: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool.query(
+      `select u.id, u.display_name, u.email, u.avatar_url, u.testnet_only, u.created_at, u.last_login_at,
+              p.preferences, p.risk_flags
+       from users u left join user_profiles p on p.user_id = u.id where u.id=$1`,
+      [userId]
+    );
+    return rows[0] ?? null;
+  }
+
+  async updateUser(userId: string, fields: { display_name?: string; email?: string; avatar_url?: string; preferences?: unknown }): Promise<void> {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const k of ["display_name", "email", "avatar_url"] as const) {
+      if (fields[k] !== undefined) { vals.push(fields[k]); sets.push(`${k}=$${vals.length + 1}`); }
+    }
+    if (sets.length) { vals.unshift(userId); await this.pool.query(`update users set ${sets.join(",")}, updated_at=now() where id=$1`, [userId, ...vals.slice(1)]); }
+    if (fields.preferences !== undefined) {
+      await this.pool.query("update user_profiles set preferences=$2, updated_at=now() where user_id=$1", [userId, fields.preferences]);
+    }
+  }
+
+  async listWallets(userId: string): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query("select id, wallet_type, chain, address, is_primary, verified_at, created_at from user_wallets where user_id=$1 order by created_at asc", [userId]);
+    return rows;
+  }
+
+  async addWallet(userId: string, walletType: string, chain: string, address: string): Promise<string> {
+    const { rows } = await this.pool.query<{ id: string }>(
+      `insert into user_wallets(user_id, wallet_type, chain, address) values ($1,$2,$3,$4)
+       on conflict (wallet_type, address) do update set chain=excluded.chain returning id`,
+      [userId, walletType, chain, address]
+    );
+    return rows[0].id;
+  }
+
+  async deleteWallet(userId: string, walletId: string): Promise<boolean> {
+    const r = await this.pool.query("delete from user_wallets where id=$1 and user_id=$2 and is_primary=false", [walletId, userId]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async logActivity(userId: string | null, event: { event_type: string; entity_type?: string; entity_id?: string; tx_hash?: string; metadata?: unknown }): Promise<void> {
+    await this.pool.query(
+      "insert into user_activity(user_id, event_type, entity_type, entity_id, tx_hash, metadata) values ($1,$2,$3,$4,$5,$6)",
+      [userId, event.event_type, event.entity_type ?? null, event.entity_id ?? null, event.tx_hash ?? null, event.metadata ?? {}]
+    );
+  }
+
+  async listActivity(userId: string, limit = 100): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query("select event_type, entity_type, entity_id, tx_hash, metadata, created_at from user_activity where user_id=$1 order by created_at desc limit $2", [userId, limit]);
+    return rows;
+  }
+
+  // List a user's rows from a user-owned table (user_id column).
+  async listByUser(table: string, userId: string): Promise<Array<Record<string, unknown>>> {
+    const allowed = new Set(["cctp_deposits", "note_commitments", "withdrawals", "intents", "settlements", "cctp_exits", "encrypted_note_backups"]);
+    if (!allowed.has(table)) throw new Error(`unsafe table ${table}`);
+    const { rows } = await this.pool.query(`select * from ${table} where user_id=$1 order by created_at desc limit 200`, [userId]);
+    return rows;
+  }
+
+  async addNoteBackup(userId: string, commitment: string, encryptedPayload: string, version: string): Promise<void> {
+    await this.pool.query(
+      `insert into encrypted_note_backups(user_id, commitment, encrypted_payload, encryption_version) values ($1,$2,$3,$4)
+       on conflict (user_id, commitment) do update set encrypted_payload=excluded.encrypted_payload`,
+      [userId, commitment, encryptedPayload, version]
+    );
+  }
+
+  async listQuotesByIntent(intentHash: string): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query("select quote_id, intent_hash, quote_hash, solver_id, payload, valid_until_ledger, state from quotes where intent_hash=$1 order by created_at asc", [intentHash]);
+    return rows;
+  }
+
+  // Mark a fill executed with its destination tx hash.
+  async executeFill(fillId: string, destinationTxHash: string): Promise<boolean> {
+    const r = await this.pool.query("update fills set destination_tx_hash=$2, state='EXECUTED' where fill_id=$1", [fillId, destinationTxHash]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  // Tag a just-created protocol row with the owning user (best-effort).
+  async setRowUser(table: string, idColumn: string, id: string, userId: string): Promise<void> {
+    const allowed = new Set(["cctp_deposits", "withdrawals", "intents", "settlements", "cctp_exits"]);
+    if (!allowed.has(table)) return;
+    await this.pool.query(`update ${table} set user_id=$2 where ${idColumn}=$1`, [id, userId]);
+  }
 }
