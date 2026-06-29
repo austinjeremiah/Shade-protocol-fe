@@ -89,10 +89,14 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.get("/v1/deposits/:deposit_id", async (request) => store.getById("cctp_deposits", "deposit_id", (request.params as { deposit_id: string }).deposit_id));
-  app.post("/v1/deposits/:deposit_id/submit-burn", async () => failLive("submit-burn requires funded .env and EVM transaction submission"));
-  app.post("/v1/deposits/:deposit_id/fetch-attestation", async () => failLive("fetch-attestation requires a real Circle message hash"));
-  app.post("/v1/deposits/:deposit_id/mint-forward", async () => failLive("mint-forward requires deployed Stellar contracts and stellar CLI"));
-  app.post("/v1/deposits/:deposit_id/register-note", async () => failLive("register-note requires live ShadeVault and CommitmentTree"));
+  // Enqueue the real CCTP inbound to the relayer (burn -> attestation ->
+  // mint_and_forward -> register-note + deposit proof). The body carries the note
+  // commitment/coin path + amount; the relayer worker performs the whole flow.
+  app.post("/v1/deposits/:deposit_id/process", async (request) => {
+    const depositId = (request.params as { deposit_id: string }).deposit_id;
+    const job = await queue.enqueue("relayer", "CCTP_INBOUND", (request.body ?? {}) as Record<string, unknown>, `deposit-inbound:${depositId}`);
+    return { deposit_id: depositId, job_id: job.job_id, status: "queued" };
+  });
 
   app.post("/v1/notes/local/derive", async (request) => {
     const note = generateNotePreimage(request.body as never);
@@ -129,7 +133,13 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.post("/v1/withdrawals/prepare", async (request) => { await assertRootHealthy(store); return createWithdrawal(request, store); });
-  app.post("/v1/withdrawals/submit", async () => failLive("withdraw submit requires proof and Stellar transaction"));
+  // Submit a prepared withdraw proof via the relayer (pool.withdraw on-chain).
+  app.post("/v1/withdrawals/submit", async (request) => {
+    await assertRootHealthy(store);
+    const b = (request.body ?? {}) as Record<string, unknown>;
+    const job = await queue.enqueue("relayer", "WITHDRAW_PUBLIC_SUBMIT", b, b.idempotency_key ? `wd-submit:${b.idempotency_key}` : undefined);
+    return { job_id: job.job_id, status: "queued" };
+  });
   app.get("/v1/withdrawals/:withdrawal_id", async (request) => store.getById("withdrawals", "withdrawal_id", (request.params as { withdrawal_id: string }).withdrawal_id));
 
   app.post("/v1/intents", async (request) => {
@@ -209,7 +219,13 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     await store.transition({ entityType: "cctp_exit", entityId: exitId, toState: "prepared" });
     return { exit_id: exitId };
   });
-  app.post("/v1/cctp/outbound/submit", async () => failLive("outbound submit requires live Stellar CCTP burn and Arbitrum mint"));
+  // Submit a prepared withdraw_cctp proof via the relayer (proof-bound outbound burn).
+  app.post("/v1/cctp/outbound/submit", async (request) => {
+    await assertRootHealthy(store);
+    const b = (request.body ?? {}) as Record<string, unknown>;
+    const job = await queue.enqueue("relayer", "WITHDRAW_CCTP_BURN", b, b.idempotency_key ? `exit-submit:${b.idempotency_key}` : undefined);
+    return { job_id: job.job_id, status: "queued" };
+  });
   app.get("/v1/cctp/outbound/:exit_id", async (request) => store.getById("cctp_exits", "exit_id", (request.params as { exit_id: string }).exit_id));
   app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.generated.md" }));
 }
@@ -244,8 +260,3 @@ async function assertRootHealthy(store: Store): Promise<void> {
   }
 }
 
-function failLive(message: string) {
-  const error = new Error(message);
-  (error as Error & { statusCode: number }).statusCode = 501;
-  throw error;
-}

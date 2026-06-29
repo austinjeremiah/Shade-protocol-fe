@@ -227,6 +227,32 @@ All gating protocol fixes (P1.1–P1.11) are done and verified on testnet. Next 
 PHASE 2 (backend services), then 3 (Docker), 4 (Next.js), 5 (auth/user DB), 6/7
 (app tests + UI e2e).
 
-## Then PHASES 2-7 (multi-session)
-Real API endpoints, relayer/prover/solver/root-auditor services + queue, wallet
-auth + user DB, Docker for every process, Next.js frontend, app-level e2e.
+## PHASE 2 — backend service conversion (in progress)
+The CLI flows are being turned into real, queue-driven services so no normal user
+flow needs the CLI.
+
+- **Durable queue** (`@shade/queue`, migration 003): Postgres-as-queue
+  (`service_jobs`/`service_events`) with atomic `FOR UPDATE SKIP LOCKED` claim,
+  idempotency keys, status transitions, retry-with-backoff, event log. No external
+  broker.
+- **Prover service** = real queue worker: claims proof jobs and runs the actual
+  Groth16 pipeline (shared prove.ts builders) through building_witness → proving →
+  verifying_locally → converting_for_soroban → ready; stores only public bytes,
+  deletes the witness. `npm run prover:test` (offline) PASS for all 5 proof types.
+- **API** enqueues real jobs: `POST /v1/proofs/:kind/request` → prover queue;
+  `/v1/withdrawals/submit`, `/v1/cctp/outbound/submit`, `/v1/deposits/:id/process`
+  → relayer queue; `GET /v1/jobs/:id` surfaces status/result/events. `npm run
+  api:test` is now behavioral (drives the API→queue→prover→ready loop) — PASS.
+- **Relayer service** = real queue worker: `CCTP_INBOUND` (burn → attestation →
+  mint_and_forward → register-note + deposit proof), `WITHDRAW_PUBLIC_SUBMIT`,
+  `WITHDRAW_CCTP_BURN`, `RFQ_SETTLE_SUBMIT` via sorobanInvoke. Proven on testnet:
+  a queue-driven `CCTP_INBOUND` produced real burn `0x24f2e7bf2d58...` + registered
+  leaf 1. `npm run relayer:test` (offline) PASS; `RELAYER_LIVE=1` runs the real one.
+- **Solver service**: quote signing switched to ed25519 (Stellar) — the scheme
+  `rfq_settle` verifies + the C4 authorized-solver registry; `/v1/inventory`
+  reports real Arbitrum USDC; refuses uncoverable quotes.
+- **Root auditor** (`apps/root-auditor`) from P1.9 already runs as a service.
+
+Remaining PHASE 2+: full RFQ on-chain lifecycle state, decompose CCTP_INBOUND into
+the granular relayer job types, SSE/activity stream; then PHASE 3 (Docker), 4
+(Next.js), 5 (auth/user DB), 6/7 (app + UI e2e).
