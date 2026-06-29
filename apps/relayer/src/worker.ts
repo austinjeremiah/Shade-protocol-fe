@@ -127,54 +127,32 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
   }
 
   if (job.job_type === "CCTP_INBOUND_AFTER_USER_BURN") {
-    // PHASE 6: the USER signed and submitted the burn. Validate the on-chain burn
-    // tx matches the deposit terms BEFORE doing any Stellar work — reject any
-    // mismatch (sender/amount/domain/mintRecipient/destinationCaller/hookData).
+    // FIX6: validate the USER's burn, then COMPLETE the Stellar side.
+    const { validateInboundBurnTx, runPostUserBurnCctpInbound } = await import("@shade/cctp");
     await queue.setStatus(job.job_id, "validating_burn", "verify user burn tx");
-    const arbRpc = env.ARB_SEPOLIA_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
-    const provider = new JsonRpcProvider(arbRpc);
     const burnTxHash = String(p.burn_tx_hash);
-    const tx = await provider.getTransaction(burnTxHash);
-    const receipt = await provider.getTransactionReceipt(burnTxHash);
-    if (!tx || !receipt) throw new Error("burn tx not found on Arbitrum");
-    if (receipt.status !== 1) throw new Error("burn tx reverted");
-    // sender == the user wallet
-    if (tx.from.toLowerCase() !== String(p.source_wallet_address).toLowerCase()) throw new Error("burn sender != deposit user wallet");
-    // tx target == the CCTP TokenMessenger
-    const tokenMessenger = (env.ARB_SEPOLIA_CCTP_TOKEN_MESSENGER ?? LOCKED_CCTP.arbitrumSepoliaTokenMessenger).toLowerCase();
-    if ((tx.to ?? "").toLowerCase() !== tokenMessenger) throw new Error("burn tx target != CCTP TokenMessenger");
-    // decode depositForBurnWithHook calldata and check every binding
-    const iface = new (await import("ethers")).Interface([
-      "function depositForBurnWithHook(uint256 amount,uint32 destinationDomain,bytes32 mintRecipient,address burnToken,bytes32 destinationCaller,uint256 maxFee,uint32 minFinalityThreshold,bytes calldata hookData)"
-    ]);
-    let decoded;
-    try { decoded = iface.parseTransaction({ data: tx.data }); } catch { throw new Error("burn tx is not depositForBurnWithHook"); }
-    if (!decoded) throw new Error("could not decode burn calldata");
-    const forwarder = env.STELLAR_CCTP_FORWARDER_CONTRACT ?? LOCKED_CCTP.stellarCctpForwarder;
-    const pool = env.SHIELDED_POOL_CONTRACT ?? "";
-    const expectedMintRecipient = stellarContractToBytes32(forwarder).toLowerCase();
-    const expectedCaller = stellarContractToBytes32(forwarder).toLowerCase();
-    const amount6 = BigInt(String(p.expected_amount6));
-    if (BigInt(decoded.args[0]) !== amount6) throw new Error("burn amount != deposit amount");
-    if (Number(decoded.args[1]) !== LOCKED_CCTP.stellarDomain) throw new Error("burn destination domain != Stellar");
-    if (String(decoded.args[2]).toLowerCase() !== expectedMintRecipient) throw new Error("burn mintRecipient != Stellar CCTP Forwarder");
-    if (String(decoded.args[4]).toLowerCase() !== expectedCaller) throw new Error("burn destinationCaller != Stellar CCTP Forwarder");
-    // hookData must encode the ShadePool as the forwardRecipient
-    const expectedHook = (await import("@shade/cctp-utils")).encodeStellarForwardHook(pool).toLowerCase();
-    if (String(decoded.args[7]).toLowerCase() !== expectedHook) throw new Error("burn hookData forwardRecipient != ShadePool");
+    const v = await validateInboundBurnTx(env, {
+      burnTxHash, expectedSender: String(p.source_wallet_address), expectedAmount6: BigInt(String(p.expected_amount6)),
+      pool, expectedMaxFee6: p.expected_max_fee6 ? BigInt(String(p.expected_max_fee6)) : undefined
+    });
+    await queue.setStatus(job.job_id, "burn_validated", `sender ${v.sender.slice(0, 10)}…, ${v.amount6} (6dp)`);
 
-    // All checks passed — proceed with the Stellar side (attestation -> mint_forward
-    // -> deposit proof -> receive_cctp_deposit), reusing the proven inbound flow but
-    // skipping the burn step (already done by the user). We model this as the
-    // post-burn continuation via runCctpInbound's mint/register path.
-    await queue.setStatus(job.job_id, "completing_stellar_side", "attestation + mint_forward + register");
-    // The coin opening is held in scratch by the client/prover; the relayer needs it
-    // to build the deposit proof. If not provided, the note must be registered by the
-    // prover service in a follow-up. For the testnet harness, coinPath is supplied.
+    // The note opening (coin) is needed to build the DepositNoteMint proof. Gated:
+    // in the app flow this arrives via the prover path; for dev/test a coinPath is
+    // supplied. Without it we stop at burn_validated rather than fabricating data.
+    if (!p.coinPath) {
+      await queue.setStatus(job.job_id, "awaiting_proof_witness", "burn validated; note witness not provided to relayer (prover path)");
+      return { validated: true, burnTxHash, sender: v.sender, amount6: v.amount6.toString(), state: "burn_validated", note: "supply coin witness via prover path to complete mint/forward/register" };
+    }
+    await queue.setStatus(job.job_id, "completing_stellar_side", "attestation + mint_forward + proof + register");
+    const r = await runPostUserBurnCctpInbound(env, {
+      burnTxHash, pool, amount6: v.amount6, commitmentHex: String(p.commitment), encryptedNotePayloadHashHex: String(p.encryptedNotePayloadHashHex),
+      policyIdHex: String(p.policyIdHex), newRootHex: String(p.newRootHex), coin: coinFromPath(String(p.coinPath)), scratch: process.env.SHADE_SCRATCH_DIR
+    });
+    await queue.setStatus(job.job_id, "note_registered", `leaf ${r.leafIndex}`);
     return {
-      validated: true, burnTxHash, sender: tx.from, amount6: amount6.toString(),
-      note: "user burn validated; Stellar mint/forward + DepositNoteMint proof + receive_cctp_deposit follow",
-      forward_recipient: pool, mint_recipient: expectedMintRecipient
+      state: "active", burnTxHash: r.burnTxHash, mintForwardTxHash: r.mintForwardTxHash,
+      receiveDepositTxHash: r.receiveDepositTxHash, root: r.root, leafIndex: r.leafIndex, commitment: String(p.commitment), amount7: r.amount7
     };
   }
 

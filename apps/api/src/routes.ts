@@ -44,13 +44,23 @@ import {
   quoteAcceptanceSchema,
   requestQuotesSchema,
   settlementSchema,
+  syncPrivyWalletsSchema,
   updateMeSchema,
   userDepositPrepareSchema,
+  verifyBackupSchema,
   withdrawalSchema
 } from "./schemas.js";
 
 const CHAIN_FOR: Record<WalletType, string> = { EVM: "arbitrum-sepolia", STELLAR: "stellar-testnet" };
 function randomNonce(): string { return randomUUID().replace(/-/g, ""); }
+
+// FIX9: dev/legacy routes are unavailable unless ENABLE_DEV_ROUTES=true.
+function requireDevRoutes(): void {
+  if (process.env.ENABLE_DEV_ROUTES !== "true") {
+    const e = new Error("dev route disabled (set ENABLE_DEV_ROUTES=true)") as Error & { statusCode: number };
+    e.statusCode = 404; throw e;
+  }
+}
 
 function idem(request: FastifyRequest): string {
   return idempotencyHeader.parse(request.headers)["idempotency-key"];
@@ -142,6 +152,15 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const userId = await authedUser(store, request);
     return { wallets: await store.listWallets(userId) };
   });
+  // FIX2: sync Privy linked wallets into the backend (Privy-auth required). The
+  // wallets are attributed to the AUTHENTICATED user's DID — never a client id.
+  app.post("/v1/me/wallets/sync-privy", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    const body = syncPrivyWalletsSchema.parse(request.body);
+    const n = await store.syncPrivyWallets(auth.userId, auth.privyUserId, body.wallets);
+    await store.logActivity(auth.userId, { event_type: "wallet.sync_privy", metadata: { count: n } });
+    return { synced: n, wallets: await store.listWallets(auth.userId) };
+  });
   app.post("/v1/me/wallets", async (request, reply) => {
     const userId = await authedUser(store, request);
     const body = addWalletSchema.parse(request.body);
@@ -171,6 +190,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   // The canonical user path is POST /v1/deposits/prepare (client-side note, user-
   // signed burn) below. Kept for diagnostics behind the dev namespace.
   app.post("/v1/dev/deposits/prepare-legacy", async (request) => {
+    requireDevRoutes(); // FIX9
     const body = prepareDepositSchema.parse(request.body);
     const idempotencyKey = idem(request);
     validateInboundRoute({
@@ -291,6 +311,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   depositStep("register-note", "REGISTER_NOTE");
 
   app.post("/v1/notes/local/derive", async (request) => {
+    requireDevRoutes(); // FIX9: note preimage generation belongs in the browser
     const note = generateNotePreimage(request.body as never);
     return { note_secret: "redacted", commitment: await poseidonCommitment(note) };
   });
@@ -350,11 +371,20 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   // The client proves it could decrypt+restore the vault (cache-clear test) and
   // marks the backup verified — required before deposit.
   app.post("/v1/note-vaults/:vault_id/verify-backup", async (request, reply) => {
+    // FIX3: require a non-empty proof-of-decrypt verification object + sufficient
+    // recovery policy. The backend can't see plaintext, so it requires the client
+    // to send the decrypt/compare result and stores it as metadata.
     const auth = await requirePrivyUser(store, request);
     const vaultId = (request.params as { vault_id: string }).vault_id;
-    const ok = await store.setVaultBackupStatus(auth.userId, vaultId, "verified");
-    if (!ok) { reply.code(404); return { error: "vault not found" }; }
-    await store.logActivity(auth.userId, { event_type: "vault.backup_verified", entity_type: "vault", entity_id: vaultId });
+    const body = verifyBackupSchema.parse(request.body);
+    if (body.verification.vault_id !== vaultId) { reply.code(400); return { error: "verification vault_id mismatch" }; }
+    const vault = await store.getNoteVault(auth.userId, vaultId);
+    if (!vault) { reply.code(404); return { error: "vault not found" }; }
+    if (vault.recovery_policy_status !== "sufficient" && vault.recovery_policy_status !== "strong") {
+      reply.code(409); return { error: `recovery policy insufficient (${vault.recovery_policy_status})` };
+    }
+    await store.setVaultBackupVerified(auth.userId, vaultId, body.verification);
+    await store.logActivity(auth.userId, { event_type: "vault.backup_verified", entity_type: "vault", entity_id: vaultId, metadata: { method: body.verification.method } });
     const ready = await store.vaultDepositReady(auth.userId, vaultId);
     return { vault_id: vaultId, backup_status: "verified", ...ready };
   });
@@ -387,6 +417,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.post("/v1/proofs/:kind/request", async (request) => {
+    const userId = await authedUser(store, request); // FIX7: require auth
     const body = proofRequestSchema.parse({ ...(request.body as object), proof_type: (request.params as { kind: string }).kind });
     const idempotencyKey = idem(request);
     const proofJobId = deterministicId({ namespace: "proof", parts: [idempotencyKey, body.proof_type, hashJson(body.public_inputs)] });
@@ -395,18 +426,25 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       idempotency_key: idempotencyKey,
       proof_type: body.proof_type,
       public_inputs_hash: hashJson(body.public_inputs),
+      user_id: userId,
       status: "queued"
     });
     await store.transition({ entityType: "proof_job", entityId: proofJobId, toState: "queued" });
     // Enqueue the real prover job (the prover worker generates the Groth16 proof).
     // The witness payload (coin path + binding) is supplied by the client/relayer.
-    const job = await queue.enqueue("prover", body.proof_type, (body.witness ?? {}) as Record<string, unknown>, `proof:${proofJobId}`);
+    const job = await queue.enqueue("prover", body.proof_type, { ...(body.witness ?? {}), user_id: userId } as Record<string, unknown>, `proof:${proofJobId}`);
     return { proof_job_id: proofJobId, job_id: job.job_id, status: "queued" };
   });
-  app.get("/v1/proofs/:proof_job_id", async (request) => store.getById("proof_jobs", "proof_job_id", (request.params as { proof_job_id: string }).proof_job_id));
+  app.get("/v1/proofs/:proof_job_id", async (request) => {
+    const userId = await authedUser(store, request);
+    const pj = await store.getById<{ user_id?: string }>("proof_jobs", "proof_job_id", (request.params as { proof_job_id: string }).proof_job_id);
+    if (pj && pj.user_id && pj.user_id !== userId) { const e = new Error("not your proof job") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    return pj;
+  });
 
   // PHASE 2 generic job status (prover/relayer queue): status + non-secret result + events.
   app.get("/v1/jobs/:job_id", async (request) => {
+    await authedUser(store, request); // FIX7: job status requires auth
     const id = (request.params as { job_id: string }).job_id;
     const job = await queue.getJob(id);
     if (!job) { const e = new Error("job not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
@@ -435,6 +473,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   app.get("/v1/withdrawals/:withdrawal_id", async (request) => store.getById("withdrawals", "withdrawal_id", (request.params as { withdrawal_id: string }).withdrawal_id));
 
   app.post("/v1/intents", async (request) => {
+    const userId = await authedUser(store, request); // FIX7/FIX8: auth required, store user_id
     const body = intentSchema.parse(request.body);
     const idempotencyKey = idem(request);
     const intentHash = hashJson(body);
@@ -446,11 +485,11 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       expiry_ledger: body.expiry_ledger,
       policy_id: body.compliance_policy_id,
       user_signature: body.signature,
+      user_id: userId,
       state: "INTENT_CREATED"
     });
     await store.transition({ entityType: "intent", entityId: intentHash, toState: "INTENT_CREATED" });
-    const userId = await authedUserOptional(store, request);
-    if (userId) { await store.setRowUser("intents", "intent_hash", intentHash, userId); await store.logActivity(userId, { event_type: "intent.create", entity_type: "intent", entity_id: intentHash }); }
+    await store.logActivity(userId, { event_type: "intent.create", entity_type: "intent", entity_id: intentHash });
     return { intent_hash: intentHash };
   });
   app.get("/v1/intents/:intent_hash", async (request) => store.getById("intents", "intent_hash", (request.params as { intent_hash: string }).intent_hash));
@@ -459,7 +498,9 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   // call the real solver; the returned quote is persisted. Otherwise returns the
   // quotes already recorded for the intent.
   app.post("/v1/intents/:intent_hash/request-quotes", async (request) => {
+    const userId = await authedUser(store, request); // FIX7/FIX8
     const intentHash = (request.params as { intent_hash: string }).intent_hash;
+    await requireOwnedIntent(store, userId, intentHash);
     const body = requestQuotesSchema.parse(request.body);
     if (process.env.SOLVER_URL) {
       const resp = await fetch(`${process.env.SOLVER_URL}/v1/quote`, {
@@ -493,10 +534,16 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { quote_id: body.quote_id, quote_hash: quoteHash };
   });
   app.post("/v1/quotes/:quote_id/accept", async (request) => {
+    const userId = await authedUser(store, request); // FIX8
     const body = quoteAcceptanceSchema.parse(request.body);
     const quoteId = (request.params as { quote_id: string }).quote_id;
+    await requireOwnedIntent(store, userId, body.intent_hash); // user must own the intent
+    const lc = await store.rfqLifecycle(body.intent_hash, quoteId);
+    if (!lc.quote) { const e = new Error("quote not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+    if (lc.quote.intent_hash !== body.intent_hash) { const e = new Error("quote does not belong to intent") as Error & { statusCode: number }; e.statusCode = 409; throw e; }
+    if (lc.accepted) { const e = new Error("a quote is already accepted for this intent (immutable)") as Error & { statusCode: number }; e.statusCode = 409; throw e; }
     const acceptanceId = deterministicId({ namespace: "accept", parts: [quoteId, body.user_signature_hash] });
-    await store.insertGeneric("quote_acceptances", { acceptance_id: acceptanceId, quote_id: quoteId, intent_hash: body.intent_hash, user_signature_hash: body.user_signature_hash });
+    await store.insertGeneric("quote_acceptances", { acceptance_id: acceptanceId, quote_id: quoteId, intent_hash: body.intent_hash, user_signature_hash: body.user_signature_hash, user_id: userId });
     await store.transition({ entityType: "quote", entityId: quoteId, toState: "QUOTE_ACCEPTED" });
     return { acceptance_id: acceptanceId };
   });
@@ -558,31 +605,37 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   app.get("/v1/settlements/:settlement_id", async (request) => store.getById("settlements", "settlement_id", (request.params as { settlement_id: string }).settlement_id));
 
   app.post("/v1/cctp/outbound/prepare", async (request) => {
+    const userId = await authedUser(store, request); // FIX7
     await assertRootHealthy(store);
     const body = cctpExitSchema.parse(request.body);
     const idempotencyKey = idem(request);
     const exitId = deterministicId({ namespace: "exit", parts: [idempotencyKey, body.nullifier] });
-    await store.insertGeneric("cctp_exits", { exit_id: exitId, idempotency_key: idempotencyKey, ...body, state: "prepared" });
+    await store.insertGeneric("cctp_exits", { exit_id: exitId, idempotency_key: idempotencyKey, ...body, user_id: userId, state: "prepared" });
     await store.transition({ entityType: "cctp_exit", entityId: exitId, toState: "prepared" });
-    const userId = await authedUserOptional(store, request);
-    if (userId) { await store.setRowUser("cctp_exits", "exit_id", exitId, userId); await store.logActivity(userId, { event_type: "cctp_exit.prepare", entity_type: "cctp_exit", entity_id: exitId }); }
+    await store.logActivity(userId, { event_type: "cctp_exit.prepare", entity_type: "cctp_exit", entity_id: exitId });
     return { exit_id: exitId };
   });
   // Submit a prepared withdraw_cctp proof via the relayer (proof-bound outbound burn).
   app.post("/v1/cctp/outbound/submit", async (request) => {
+    const userId = await authedUser(store, request); // FIX7
     await assertRootHealthy(store);
     const b = (request.body ?? {}) as Record<string, unknown>;
+    if (b.exit_id) await requireOwnedExit(store, userId, String(b.exit_id));
     const job = await queue.enqueue("relayer", "WITHDRAW_CCTP_BURN", b, b.idempotency_key ? `exit-submit:${b.idempotency_key}` : undefined);
     return { job_id: job.job_id, status: "queued" };
   });
   // Granular outbound steps for clients driving the CCTP exit step by step.
   app.post("/v1/cctp/outbound/:exit_id/fetch-attestation", async (request) => {
+    const userId = await authedUser(store, request); // FIX7
     const exitId = (request.params as { exit_id: string }).exit_id;
+    await requireOwnedExit(store, userId, exitId);
     const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_ATTESTATION", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_ATTESTATION:${exitId}`);
     return { exit_id: exitId, job_id: job.job_id, status: "queued" };
   });
   app.post("/v1/cctp/outbound/:exit_id/complete-mint", async (request) => {
+    const userId = await authedUser(store, request); // FIX7
     const exitId = (request.params as { exit_id: string }).exit_id;
+    await requireOwnedExit(store, userId, exitId);
     const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_MINT", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_MINT:${exitId}`);
     return { exit_id: exitId, job_id: job.job_id, status: "queued" };
   });
@@ -643,6 +696,18 @@ async function authedUserOptional(store: Store, request: FastifyRequest): Promis
   if (privyEnabled()) return (await optionalPrivyUser(store, request))?.userId ?? null;
   if (legacyWalletAuth()) return optionalUser(store, request);
   return null;
+}
+
+// FIX7/FIX8 ownership helpers. Throw 403 if the row isn't owned by userId.
+async function requireOwnedIntent(store: Store, userId: string, intentHash: string): Promise<void> {
+  const row = await store.getById<{ user_id?: string }>("intents", "intent_hash", intentHash);
+  if (!row) { const e = new Error("intent not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+  if (row.user_id && row.user_id !== userId) { const e = new Error("intent not owned by user") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+}
+async function requireOwnedExit(store: Store, userId: string, exitId: string): Promise<void> {
+  const row = await store.getById<{ user_id?: string }>("cctp_exits", "exit_id", exitId);
+  if (!row) { const e = new Error("exit not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+  if (row.user_id && row.user_id !== userId) { const e = new Error("exit not owned by user") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
 }
 
 // C7: refuse spends while the root auditor (P1.9) has flagged a critical root

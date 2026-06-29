@@ -161,3 +161,25 @@ export const burnSubmittedSchema = z.object({
   source_chain: z.string().min(1),
   source_wallet_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/)
 });
+
+// FIX2: Privy linked-wallet sync. EVM 0x… (40 hex) or Stellar G… (56 base32).
+export const syncPrivyWalletsSchema = z.object({
+  wallets: z.array(z.object({
+    wallet_type: z.enum(["EVM", "STELLAR"]),
+    wallet_source: z.enum(["privy_embedded", "external", "freighter", "legacy"]).optional(),
+    chain: z.string().min(1),
+    address: z.string().min(1),
+    privy_wallet_id: z.string().optional()
+  }).refine((w) => w.wallet_type === "EVM" ? /^0x[a-fA-F0-9]{40}$/.test(w.address) : /^G[A-Z2-7]{55}$/.test(w.address), { message: "invalid address for wallet_type" })).min(1)
+});
+
+// FIX3: real backup verification — client must send a non-empty proof-of-decrypt.
+export const verifyBackupSchema = z.object({
+  verification: z.object({
+    vault_id: z.string().min(1),
+    decrypted_vault_hash: z.string().min(8),
+    commitments_hash: z.string().min(1),
+    method: z.enum(["stellar_ed25519_signature", "recovery_kit_password", "passkey_prf"]),
+    verified_at_client: z.string().min(1)
+  })
+});

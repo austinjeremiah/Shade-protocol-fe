@@ -205,6 +205,15 @@ export class Store {
     return (r.rowCount ?? 0) > 0;
   }
 
+  // FIX3: mark verified AND persist the client's proof-of-decrypt verification.
+  async setVaultBackupVerified(userId: string, vaultId: string, verification: unknown): Promise<boolean> {
+    const r = await this.pool.query(
+      "update note_vaults set backup_status='verified', last_backup_verified_at=now(), last_backup_verification=$3, updated_at=now() where user_id=$1 and vault_id=$2",
+      [userId, vaultId, verification]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
   async setVaultRecoveryPolicy(vaultId: string, status: string): Promise<void> {
     await this.pool.query("update note_vaults set recovery_policy_status=$2, updated_at=now() where vault_id=$1", [vaultId, status]);
   }
@@ -296,12 +305,31 @@ export class Store {
 
   async getUser(userId: string): Promise<Record<string, unknown> | null> {
     const { rows } = await this.pool.query(
-      `select u.id, u.display_name, u.email, u.avatar_url, u.testnet_only, u.created_at, u.last_login_at,
-              p.preferences, p.risk_flags
+      `select u.id, u.privy_user_id, u.display_name, u.email, u.avatar_url, u.testnet_only,
+              u.created_at, u.last_login_at, p.preferences, p.risk_flags
        from users u left join user_profiles p on p.user_id = u.id where u.id=$1`,
       [userId]
     );
-    return rows[0] ?? null;
+    if (!rows[0]) return null;
+    return { ...rows[0], wallets: await this.listWallets(userId) };
+  }
+
+  // FIX2: sync Privy linked wallets into user_wallets for the authenticated user.
+  async syncPrivyWallets(userId: string, privyUserId: string, wallets: Array<{ wallet_type: string; wallet_source?: string; chain: string; address: string; privy_wallet_id?: string }>): Promise<number> {
+    let n = 0;
+    for (const w of wallets) {
+      await this.pool.query(
+        `insert into user_wallets(user_id, privy_user_id, wallet_type, wallet_source, chain, address, privy_wallet_id, verified_at)
+         values ($1,$2,$3,$4,$5,$6,$7, now())
+         on conflict (wallet_type, address) do update set
+           user_id=excluded.user_id, privy_user_id=excluded.privy_user_id,
+           wallet_source=excluded.wallet_source, chain=excluded.chain,
+           privy_wallet_id=excluded.privy_wallet_id, verified_at=now()`,
+        [userId, privyUserId, w.wallet_type, w.wallet_source ?? "external", w.chain, w.address, w.privy_wallet_id ?? null]
+      );
+      n++;
+    }
+    return n;
   }
 
   async updateUser(userId: string, fields: { display_name?: string; email?: string; avatar_url?: string; preferences?: unknown }): Promise<void> {

@@ -43,7 +43,7 @@ async function makeVerifiedVault(app: ReturnType<typeof Fastify>, authH: Record<
   const wrapper = await wrapVaultKeyWithStellarSignature(master, randomBytes(64), { stellar_address: "GTEST", wallet_source: "freighter" });
   const env: EncryptedVaultEnvelope = await createVaultEnvelope({ vault, masterKey: master, privyUserId, origin: ORIGIN, wrappers: [wrapper] });
   await app.inject({ method: "POST", url: "/v1/note-vaults", headers: authH, payload: { envelope: env } });
-  await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH });
+  await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH, payload: { verification: { vault_id: env.vault_id, decrypted_vault_hash: "0x" + "ab".repeat(16), commitments_hash: "0xcd", method: "stellar_ed25519_signature", verified_at_client: new Date().toISOString() } } });
   return env.vault_id;
 }
 

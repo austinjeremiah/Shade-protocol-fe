@@ -233,3 +233,120 @@ export async function runCctpInbound(env: EnvMap, p: InboundParams): Promise<Inb
     amount7: amount7.toString()
   };
 }
+
+// ===========================================================================
+// FIX6 (audit2): user-signed-burn inbound. The USER already burned on Arbitrum;
+// the relayer validates that burn, then completes the Stellar side. No backend
+// EVM key is used here.
+// ===========================================================================
+
+export type BurnValidation = {
+  burnTxHash: string;
+  sender: string;
+  amount6: bigint;
+  destinationDomain: number;
+  mintRecipient: string;
+  destinationCaller: string;
+  burnToken: string;
+  maxFee: bigint;
+  minFinalityThreshold: number;
+  hookData: string;
+};
+
+// Validate a user-submitted depositForBurnWithHook tx against the expected deposit
+// terms. Throws on ANY mismatch. Returns the decoded burn params on success.
+export async function validateInboundBurnTx(env: EnvMap, args: {
+  burnTxHash: string; expectedSender: string; expectedAmount6: bigint; pool: string; expectedMaxFee6?: bigint;
+}): Promise<BurnValidation> {
+  const provider = new JsonRpcProvider(env.ARB_SEPOLIA_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc");
+  const tx = await provider.getTransaction(args.burnTxHash);
+  const receipt = await provider.getTransactionReceipt(args.burnTxHash);
+  if (!tx || !receipt) throw new Error("burn tx not found on Arbitrum");
+  if (receipt.status !== 1) throw new Error("burn tx reverted");
+  if (tx.from.toLowerCase() !== args.expectedSender.toLowerCase()) throw new Error("burn sender != deposit user wallet");
+  const tokenMessenger = (env.ARB_SEPOLIA_CCTP_TOKEN_MESSENGER ?? LOCKED_CCTP.arbitrumSepoliaTokenMessenger).toLowerCase();
+  if ((tx.to ?? "").toLowerCase() !== tokenMessenger) throw new Error("burn tx target != CCTP TokenMessenger");
+  const { Interface } = await import("ethers");
+  const iface = new Interface([
+    "function depositForBurnWithHook(uint256 amount,uint32 destinationDomain,bytes32 mintRecipient,address burnToken,bytes32 destinationCaller,uint256 maxFee,uint32 minFinalityThreshold,bytes calldata hookData)"
+  ]);
+  let d;
+  try { d = iface.parseTransaction({ data: tx.data }); } catch { throw new Error("burn tx is not depositForBurnWithHook"); }
+  if (!d) throw new Error("could not decode burn calldata");
+  const forwarder = env.STELLAR_CCTP_FORWARDER_CONTRACT ?? LOCKED_CCTP.stellarCctpForwarder;
+  const usdc = (env.ARB_SEPOLIA_USDC_ADDRESS ?? LOCKED_CCTP.arbitrumSepoliaUsdc).toLowerCase();
+  const expMint = stellarContractToBytes32(forwarder).toLowerCase();
+  const expHook = encodeStellarForwardHook(args.pool).toLowerCase();
+  if (BigInt(d.args[0]) !== args.expectedAmount6) throw new Error("burn amount != deposit amount");
+  if (Number(d.args[1]) !== LOCKED_CCTP.stellarDomain) throw new Error("burn destination domain != Stellar");
+  if (String(d.args[2]).toLowerCase() !== expMint) throw new Error("burn mintRecipient != Stellar CCTP Forwarder");
+  if (String(d.args[3]).toLowerCase() !== usdc) throw new Error("burn burnToken != expected USDC");
+  if (String(d.args[4]).toLowerCase() !== expMint) throw new Error("burn destinationCaller != Stellar CCTP Forwarder");
+  if (args.expectedMaxFee6 !== undefined && BigInt(d.args[5]) > args.expectedMaxFee6) throw new Error("burn maxFee exceeds prepared maxFee");
+  if (String(d.args[7]).toLowerCase() !== expHook) throw new Error("burn hookData forwardRecipient != ShadePool");
+  return {
+    burnTxHash: args.burnTxHash, sender: tx.from, amount6: BigInt(d.args[0]), destinationDomain: Number(d.args[1]),
+    mintRecipient: String(d.args[2]), destinationCaller: String(d.args[4]), burnToken: String(d.args[3]),
+    maxFee: BigInt(d.args[5]), minFinalityThreshold: Number(d.args[6]), hookData: String(d.args[7])
+  };
+}
+
+export type PostUserBurnParams = {
+  burnTxHash: string; pool: string; amount6: bigint; commitmentHex: string; encryptedNotePayloadHashHex: string;
+  policyIdHex: string; newRootHex: string; coin?: GeneratedCoin; scratch?: string; poolId?: string; chainId?: string;
+};
+
+// After the user burn is validated: fetch the Circle attestation, mint_and_forward
+// on Stellar, generate the DepositNoteMint proof, and receive_cctp_deposit. Returns
+// real tx hashes. The coin opening (for the proof) is dev/test-supplied via scratch;
+// the normal app supplies it through the prover path (gated, never logged).
+export async function runPostUserBurnCctpInbound(env: EnvMap, p: PostUserBurnParams): Promise<InboundResult> {
+  const forwarder = env.STELLAR_CCTP_FORWARDER_CONTRACT ?? LOCKED_CCTP.stellarCctpForwarder;
+  const sac = need(env, "STELLAR_TESTNET_USDC_SAC_CONTRACT");
+  const relayerSecret = need(env, "STELLAR_RELAYER_SECRET");
+  const apiBase = env.CCTP_ATTESTATION_API_BASE ?? "https://iris-api-sandbox.circle.com";
+
+  // 1) Circle attestation for the user's burn.
+  const att = await pollAttestation(apiBase, LOCKED_CCTP.arbitrumSepoliaDomain, p.burnTxHash, {});
+  const cctpNonceHex = keccak256(att.message);
+
+  // 2) mint_and_forward into the pool.
+  const before = sacBalance(env, sac, p.pool, relayerSecret);
+  const mintForward = sorobanInvoke({
+    contractId: forwarder, secret: relayerSecret, method: "mint_and_forward",
+    args: ["--message", bytesToCliHex(att.message), "--attestation", bytesToCliHex(att.attestation)],
+    rpcUrl: env.STELLAR_RPC_URL, passphrase: env.STELLAR_NETWORK_PASSPHRASE
+  });
+  let after = sacBalance(env, sac, p.pool, relayerSecret);
+  for (let i = 0; i < 10 && after <= before; i++) { sleepSync(3000); after = sacBalance(env, sac, p.pool, relayerSecret); }
+  const amount7 = after - before;
+  if (amount7 <= 0n) throw new Error("mint_and_forward produced no pool USDC delta");
+
+  // 3) DepositNoteMint proof (requires the note opening). Gated: dev/test supplies
+  //    the coin; the proof binds the commitment to the CCTP message.
+  if (!p.coin) throw new Error("coin opening required to build DepositNoteMint proof (supply via prover path)");
+  const dep = buildDepositProof(p.coin, {
+    sourceDomain: String(LOCKED_CCTP.arbitrumSepoliaDomain), destinationDomain: String(LOCKED_CCTP.stellarDomain),
+    cctpNonceHex, burnTxHashHex: p.burnTxHash, amount6dp: p.amount6.toString(), amount7dp: amount7.toString(),
+    assetStrkey: sac, poolStrkey: p.pool, encryptedNotePayloadHashHex: p.encryptedNotePayloadHashHex,
+    policyIdHex: p.policyIdHex, poolId: p.poolId ?? "1", chainId: p.chainId ?? "148"
+  }, p.scratch ?? ".scratch", "userburn");
+  if (!dep.locallyVerified) throw new Error("DepositNoteMint proof failed local verification");
+
+  // 4) receive_cctp_deposit (proof-bound).
+  const receive = sorobanInvoke({
+    contractId: p.pool, secret: relayerSecret, method: "receive_cctp_deposit",
+    args: ["--source_domain", String(LOCKED_CCTP.arbitrumSepoliaDomain), "--cctp_nonce", bytesToCliHex(cctpNonceHex),
+      "--asset", sac, "--amount", amount7.toString(), "--commitment", bytesToCliHex(p.commitmentHex),
+      "--new_root", bytesToCliHex(p.newRootHex), "--encrypted_note_payload_hash", bytesToCliHex(p.encryptedNotePayloadHashHex),
+      "--policy_id", bytesToCliHex(p.policyIdHex), "--proof_bytes", dep.proofHex, "--pub_signals_bytes", dep.publicHex],
+    rpcUrl: env.STELLAR_RPC_URL, passphrase: env.STELLAR_NETWORK_PASSPHRASE
+  });
+  const leafIndex = receive.returnValue.replace(/"/g, "").trim();
+  const rootRes = sorobanInvoke({ contractId: p.pool, secret: relayerSecret, method: "get_root", rpcUrl: env.STELLAR_RPC_URL, passphrase: env.STELLAR_NETWORK_PASSPHRASE, readOnly: true });
+  return {
+    burnTxHash: p.burnTxHash, message: att.message, attestation: att.attestation, cctpNonceHex,
+    mintForwardTxHash: mintForward.txHash, vaultUsdcBefore: before.toString(), vaultUsdcAfter: after.toString(),
+    receiveDepositTxHash: receive.txHash, leafIndex, root: rootRes.returnValue.replace(/"/g, "").trim(), amount7: amount7.toString()
+  };
+}

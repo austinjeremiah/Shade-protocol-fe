@@ -75,8 +75,12 @@ async function makeEnvelope(privyUserId: string, evmOnly = false): Promise<{ env
     const before = json(await app.inject({ method: "GET", url: `/v1/note-vaults/${env.vault_id}`, headers: authH }));
     check("vault not deposit-ready before verify-backup", before.backup_status === "created");
 
-    // verify-backup -> ready
-    const verified = json(await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH }));
+    // FIX3: verify-backup with EMPTY body must be rejected
+    const emptyVerify = await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH, payload: {} });
+    check("verify-backup with empty body rejected", emptyVerify.statusCode >= 400);
+    // verify-backup with a real proof-of-decrypt object -> ready
+    const verification = { verification: { vault_id: env.vault_id, decrypted_vault_hash: "0x" + "ab".repeat(16), commitments_hash: "0xcd", method: "stellar_ed25519_signature", verified_at_client: new Date().toISOString() } };
+    const verified = json(await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH, payload: verification }));
     check("verify-backup -> verified + deposit ready", verified.backup_status === "verified" && verified.ready === true, `ready=${verified.ready}`);
 
     // EVM-only vault -> insufficient policy (cannot deposit)
