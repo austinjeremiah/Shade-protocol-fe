@@ -20,7 +20,8 @@
       "@shade/rfq-types": ["packages/rfq-types/src/index.ts"],
       "@shade/queue": ["packages/queue/src/index.ts"],
       "@shade/note-vault": ["packages/note-vault/src/index.ts"],
-      "@shade/auth-privy": ["packages/auth-privy/src/index.ts"]
+      "@shade/auth-privy": ["packages/auth-privy/src/index.ts"],
+      "@shade/stellar-actions": ["packages/stellar-actions/src/index.ts"]
     }
   },
   "include": ["apps/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts"]

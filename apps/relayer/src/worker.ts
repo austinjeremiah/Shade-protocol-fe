@@ -85,24 +85,16 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
     return { burnTxHash: result.burnTxHash, mintForwardTxHash: result.mintForwardTxHash, leafIndex: result.leafIndex, root: result.root, amount7: result.amount7 };
   }
 
-  if (job.job_type === "WITHDRAW_PUBLIC_SUBMIT") {
-    // `to` must authorize the withdraw (note owner). In the testnet harness the
-    // recipient's secret is an operator-managed test wallet.
-    const secret = (p.toSecret as string) ?? env.STELLAR_USER_SECRET;
-    await queue.setStatus(job.job_id, "submitting", "pool.withdraw");
-    const r = sorobanInvoke({ contractId: pool, secret, method: "withdraw", rpcUrl: RPC, passphrase: PASS, retries: 3,
-      args: ["--to", String(p.to), "--proof_bytes", String(p.proofHex), "--pub_signals_bytes", String(p.publicHex)] });
-    return { txHash: r.txHash };
-  }
-
-  if (job.job_type === "WITHDRAW_CCTP_BURN") {
-    const secret = (p.toSecret as string) ?? env.STELLAR_USER_SECRET;
-    await queue.setStatus(job.job_id, "submitting", "pool.withdraw_cctp");
-    const r = sorobanInvoke({ contractId: pool, secret, method: "withdraw_cctp", rpcUrl: RPC, passphrase: PASS, retries: 3,
-      args: ["--to", String(p.to), "--proof_bytes", String(p.proofHex), "--pub_signals_bytes", String(p.publicHex),
-        "--destination_domain", String(p.destinationDomain), "--destination_recipient", String(p.destinationRecipient),
-        "--max_fee", String(p.maxFee), "--min_finality_threshold", String(p.minFinalityThreshold)] });
-    return { txHash: r.txHash };
+  if (job.job_type === "WITHDRAW_PUBLIC_SUBMIT" || job.job_type === "WITHDRAW_CCTP_BURN") {
+    // PHASE 7: `to` (the note owner) must authorize these. The CLIENT signs the
+    // Soroban XDR with its Stellar wallet (Freighter/Privy) and submits the signed
+    // XDR; the relayer only BROADCASTS it. No user secret touches the backend.
+    const signedXdr = p.signedXdr as string | undefined;
+    if (!signedXdr) throw new Error(`${job.job_type} requires a client-signed XDR (signedXdr); backend never signs user Stellar actions`);
+    await queue.setStatus(job.job_id, "broadcasting", `broadcast signed ${job.job_type}`);
+    const { broadcastSignedXdr } = await import("@shade/stellar-actions");
+    const r = await broadcastSignedXdr({ rpcUrl: RPC, passphrase: PASS }, signedXdr);
+    return { txHash: r.hash, status: r.status };
   }
 
   if (job.job_type === "RFQ_SETTLE_SUBMIT") {

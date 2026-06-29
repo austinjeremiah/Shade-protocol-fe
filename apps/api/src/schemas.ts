@@ -63,6 +63,7 @@ export const settlementSchema = z.object({
   intent_hash: z.string().min(1),
   quote_id: z.string().uuid(),
   fill_id: z.string().optional(),
+  fill_receipt_hash: z.string().optional(),
   proof_job_id: z.string().min(1),
   nullifier: z.string().min(1)
 });

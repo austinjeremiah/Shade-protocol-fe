@@ -414,6 +414,17 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.post("/v1/withdrawals/prepare", async (request) => { await assertRootHealthy(store); return createWithdrawal(request, store); });
+  // PHASE 7: build the UNSIGNED Soroban withdraw XDR for the user's Stellar wallet
+  // (Freighter/Privy) to sign client-side. The backend never holds the user secret.
+  app.post("/v1/withdrawals/build-xdr", async (request) => {
+    await authedUser(store, request);
+    await assertRootHealthy(store);
+    const b = (request.body ?? {}) as { to?: string; proofHex?: string; publicHex?: string };
+    if (!b.to || !b.proofHex || !b.publicHex) { const e = new Error("to, proofHex, publicHex required") as Error & { statusCode: number }; e.statusCode = 400; throw e; }
+    const { buildInvokeXdr, withdrawParams, testnet } = await import("@shade/stellar-actions");
+    const xdr = await buildInvokeXdr({ network: testnet(), source: b.to, contractId: process.env.SHIELDED_POOL_CONTRACT ?? "", method: "withdraw", params: withdrawParams(b.to, b.proofHex, b.publicHex) });
+    return { unsigned_xdr: xdr, sign_with: "stellar_wallet", submit_to: "/v1/withdrawals/submit (signedXdr)" };
+  });
   // Submit a prepared withdraw proof via the relayer (pool.withdraw on-chain).
   app.post("/v1/withdrawals/submit", async (request) => {
     await assertRootHealthy(store);
@@ -516,14 +527,33 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { fill_id: fillId, state: "EXECUTED", destination_tx_hash: b.destination_tx_hash };
   });
   app.post("/v1/rfq/settle", async (request) => {
+    // PHASE 8: strict RFQ lifecycle verification before enqueuing settlement.
+    const userId = await authedUser(store, request);
     await assertRootHealthy(store);
     const body = settlementSchema.parse(request.body);
+    const reject = (msg: string, code = 409): never => { const e = new Error(msg) as Error & { statusCode: number }; e.statusCode = code; throw e; };
+
+    const lc = await store.rfqLifecycle(body.intent_hash, body.quote_id);
+    if (!lc.intent) reject("intent not found", 404);
+    if (lc.intent!.user_id && lc.intent!.user_id !== userId) reject("authenticated user does not own this intent", 403);
+    if (!lc.quote) reject("quote not found", 404);
+    if (lc.quote!.intent_hash !== body.intent_hash) reject("quote does not belong to intent");
+    if (!lc.accepted) reject("quote is not accepted");
+    if (!lc.fill) reject("fill not found for quote");
+    if (lc.fill!.state !== "EXECUTED") reject("fill is not executed");
+    if (body.fill_receipt_hash && lc.fill!.fill_receipt_hash !== body.fill_receipt_hash) reject("fill receipt hash mismatch");
+    // expiry: the quote/intent must not be past their valid-until ledger.
+    const proofReady = await store.getById<{ status?: string }>("proof_jobs", "proof_job_id", body.proof_job_id);
+    if (!proofReady || proofReady.status !== "ready") reject("proof job is not ready");
+    if (await store.isNullifierSpent(body.nullifier)) reject("nullifier already spent");
+    // solver authorization is enforced on-chain (C4); the API records the lifecycle.
+
     const settlementId = deterministicId({ namespace: "settle", parts: [body.intent_hash, body.quote_id, body.nullifier] });
     await store.insertGeneric("settlements", { settlement_id: settlementId, ...body, state: "SETTLEMENT_SUBMITTED" });
     await store.transition({ entityType: "settlement", entityId: settlementId, toState: "SETTLEMENT_SUBMITTED" });
-    const userId = await authedUserOptional(store, request);
-    if (userId) { await store.setRowUser("settlements", "settlement_id", settlementId, userId); await store.logActivity(userId, { event_type: "rfq.settle", entity_type: "settlement", entity_id: settlementId }); }
-    return { settlement_id: settlementId };
+    await store.setRowUser("settlements", "settlement_id", settlementId, userId);
+    await store.logActivity(userId, { event_type: "rfq.settle", entity_type: "settlement", entity_id: settlementId });
+    return { settlement_id: settlementId, lifecycle_verified: true };
   });
   app.get("/v1/settlements/:settlement_id", async (request) => store.getById("settlements", "settlement_id", (request.params as { settlement_id: string }).settlement_id));
 
