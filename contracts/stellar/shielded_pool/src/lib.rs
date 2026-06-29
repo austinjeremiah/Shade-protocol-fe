@@ -56,6 +56,10 @@ pub enum Error {
     WrongQuote = 14,        // P1.6 quote_hash arg != quoteHash bound in proof
     WrongIntent = 15,       // P1.6 intent_hash arg != intentHash bound in proof
     WrongFillReceipt = 16,  // P1.6 fill_receipt_hash arg != fillReceiptHash bound in proof
+    WrongDestDomain = 17,   // P1.7 destination_domain arg != bound in proof
+    WrongDestRecipient = 18,// P1.7 destination_recipient arg != bound in proof
+    WrongMaxFee = 19,       // P1.7 max_fee arg != bound in proof
+    WrongFinality = 20,     // P1.7 min_finality_threshold arg != bound in proof
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -307,7 +311,15 @@ impl ShieldedPool {
     /// note owner: requiring its auth binds the destination so a relayer cannot
     /// mutate recipient/amount. nullifier+amount are bound by the proof.
     ///
-    /// pub signals: [nullifierHash, withdrawnValue, stateRoot, associationRoot]
+    /// P1.7 pub signals (shared withdraw circuit, 17 signals):
+    /// [0] nullifierHash [1] operationType [2] withdrawnValue [5] deadlineLedger
+    /// [6] stateRoot [7] associationRoot [8] poolId [9] chainId
+    /// [13] destinationDomain [14] destinationRecipient [15] maxFee [16] minFinalityThreshold.
+    /// The destination_domain/recipient/max_fee/min_finality_threshold args are
+    /// bound into the user's proof, so a relayer cannot redirect the burn, change
+    /// the domain, or alter the fee/threshold while reusing a valid user proof.
+    /// (`to.require_auth()` only binds the Stellar note owner, NOT the Arbitrum
+    /// destination — hence the proof bindings below.)
     pub fn withdraw_cctp(
         env: Env,
         to: Address,
@@ -319,16 +331,39 @@ impl ShieldedPool {
         min_finality_threshold: u32,
     ) -> i128 {
         Self::require_not_paused(&env);
-        to.require_auth(); // binds destination/amount to the note owner
+        to.require_auth(); // binds the spend to the note owner
 
         let signals = parse_public_signals(&env, &pub_signals_bytes);
+        let op_type: i128 = fr32_to_i128(&signals.get(1).unwrap());
         let nullifier_hash: BytesN<32> = signals.get(0).unwrap();
         let amount: i128 = fr32_to_i128(&signals.get(2).unwrap()); // P1.5 layout: value@2
+        let deadline_ledger: i128 = fr32_to_i128(&signals.get(5).unwrap());
         let state_root: BytesN<32> = signals.get(6).unwrap();      // P1.5 layout: stateRoot@6
         if amount <= 0 {
             panic_err(&env, Error::BadAmount);
         }
-        let _ = OP_WITHDRAW_CCTP; // full op-type binding for cctp is P1.7
+        // P1.7 enforce operation type is WITHDRAW_CCTP.
+        if op_type != OP_WITHDRAW_CCTP {
+            panic_err(&env, Error::WrongOperation);
+        }
+        // P1.7 deadline must not be expired.
+        if (env.ledger().sequence() as i128) > deadline_ledger {
+            panic_err(&env, Error::Expired);
+        }
+        // P1.7 destination bindings: each function arg must equal the value bound
+        // into the proof, so a relayer cannot mutate the outbound burn terms.
+        if fr32_to_i128(&signals.get(13).unwrap()) != destination_domain as i128 {
+            panic_err(&env, Error::WrongDestDomain);
+        }
+        if signals.get(14).unwrap() != destination_recipient {
+            panic_err(&env, Error::WrongDestRecipient);
+        }
+        if fr32_to_i128(&signals.get(15).unwrap()) != max_fee {
+            panic_err(&env, Error::WrongMaxFee);
+        }
+        if fr32_to_i128(&signals.get(16).unwrap()) != min_finality_threshold as i128 {
+            panic_err(&env, Error::WrongFinality);
+        }
         Self::check_domain_compliance(&env, &signals);
         if !env.storage().persistent().get(&DataKey::KnownRoot(state_root.clone())).unwrap_or(false) {
             panic_err(&env, Error::UnknownRoot);

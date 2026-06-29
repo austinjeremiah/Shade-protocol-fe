@@ -1,8 +1,8 @@
 diff --git a/privacy-pools/cli/coinutils/src/cli/args.rs b/privacy-pools/cli/coinutils/src/cli/args.rs
-index 440aa84..eaf794e 100644
+index 440aa84..128738e 100644
 --- a/privacy-pools/cli/coinutils/src/cli/args.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/args.rs
-@@ -30,6 +30,27 @@ pub enum Commands {
+@@ -30,6 +30,39 @@ pub enum Commands {
          /// Output file path
          #[arg(short, long, default_value = "withdrawal.json")]
          output: String,
@@ -27,10 +27,22 @@ index 440aa84..eaf794e 100644
 +        /// P1.6 RFQ fill-receipt hash (decimal field element; int(sha256(fill_tx)[:31]))
 +        #[arg(long, default_value = "0")]
 +        fill_receipt_hash: String,
++        /// P1.7 CCTP destination domain
++        #[arg(long, default_value = "0")]
++        destination_domain: String,
++        /// P1.7 CCTP destination recipient (decimal field element; int(recipient32))
++        #[arg(long, default_value = "0")]
++        destination_recipient: String,
++        /// P1.7 CCTP max fee (7dp)
++        #[arg(long, default_value = "0")]
++        max_fee: String,
++        /// P1.7 CCTP min finality threshold
++        #[arg(long, default_value = "0")]
++        min_finality_threshold: String,
      },
      /// Update association set
      UpdateAssociation {
-@@ -38,6 +59,24 @@ pub enum Commands {
+@@ -38,6 +71,24 @@ pub enum Commands {
          /// Label to add
          label: String,
      },
@@ -56,10 +68,10 @@ index 440aa84..eaf794e 100644
  
  impl Cli {
 diff --git a/privacy-pools/cli/coinutils/src/cli/commands.rs b/privacy-pools/cli/coinutils/src/cli/commands.rs
-index 92bf7f3..770430b 100644
+index 92bf7f3..b348578 100644
 --- a/privacy-pools/cli/coinutils/src/cli/commands.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/commands.rs
-@@ -57,12 +57,20 @@ impl CommandHandler {
+@@ -57,12 +57,24 @@ impl CommandHandler {
      }
  
      /// Handle the withdraw command
@@ -77,10 +89,14 @@ index 92bf7f3..770430b 100644
 +        quote_hash: String,
 +        intent_hash: String,
 +        fill_receipt_hash: String,
++        destination_domain: String,
++        destination_recipient: String,
++        max_fee: String,
++        min_finality_threshold: String,
      ) -> Result<()> {
          info!("Processing withdrawal for coin: {}", coin_file);
          debug!("State file: {}", state_file);
-@@ -86,12 +94,21 @@ impl CommandHandler {
+@@ -86,12 +98,26 @@ impl CommandHandler {
          };
  
          // Generate withdrawal
@@ -100,10 +116,15 @@ index 92bf7f3..770430b 100644
 +        snark_input.quote_hash = quote_hash;
 +        snark_input.intent_hash = intent_hash;
 +        snark_input.fill_receipt_hash = fill_receipt_hash;
++        // P1.7 WithdrawCCTP destination bindings (passed through into the proof).
++        snark_input.destination_domain = destination_domain;
++        snark_input.destination_recipient = destination_recipient;
++        snark_input.max_fee = max_fee;
++        snark_input.min_finality_threshold = min_finality_threshold;
  
          // Save withdrawal data
          let withdrawal_json = self
-@@ -125,6 +142,39 @@ impl CommandHandler {
+@@ -125,6 +151,39 @@ impl CommandHandler {
          println!("Association set updated successfully");
          Ok(())
      }
@@ -161,10 +182,10 @@ index 2aff16c..2c76d4a 100644
 +pub const POOL_ID: &str = "1"; // Shade shielded pool v1
 +pub const CHAIN_ID: &str = "148"; // Stellar (SLIP-44 coin type), testnet domain marker
 diff --git a/privacy-pools/cli/coinutils/src/main.rs b/privacy-pools/cli/coinutils/src/main.rs
-index c920f69..54ffd3b 100644
+index c920f69..5a0bf9a 100644
 --- a/privacy-pools/cli/coinutils/src/main.rs
 +++ b/privacy-pools/cli/coinutils/src/main.rs
-@@ -17,11 +17,38 @@ fn main() {
+@@ -17,11 +17,46 @@ fn main() {
              state_file,
              association_file,
              output,
@@ -176,6 +197,10 @@ index c920f69..54ffd3b 100644
 +            quote_hash,
 +            intent_hash,
 +            fill_receipt_hash,
++            destination_domain,
++            destination_recipient,
++            max_fee,
++            min_finality_threshold,
 +        } => command_handler.handle_withdraw(
 +            coin_file,
 +            state_file,
@@ -188,6 +213,10 @@ index c920f69..54ffd3b 100644
 +            quote_hash,
 +            intent_hash,
 +            fill_receipt_hash,
++            destination_domain,
++            destination_recipient,
++            max_fee,
++            min_finality_threshold,
 +        ),
          Commands::UpdateAssociation {
              association_file,
@@ -217,10 +246,10 @@ index d0c5252..552a253 100644
 +pub use transfer::*;
  pub use withdrawal::*;
 diff --git a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-index f112d23..d713bf7 100644
+index f112d23..2c56e23 100644
 --- a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
 +++ b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-@@ -110,6 +110,17 @@ impl WithdrawalManager {
+@@ -110,6 +110,22 @@ impl WithdrawalManager {
              association_root,
              label_index,
              label_siblings,
@@ -235,14 +264,19 @@ index f112d23..d713bf7 100644
 +            quote_hash: "0".to_string(),
 +            intent_hash: "0".to_string(),
 +            fill_receipt_hash: "0".to_string(),
++            // P1.7 defaults; overridden by handle_withdraw from CLI args.
++            destination_domain: "0".to_string(),
++            destination_recipient: "0".to_string(),
++            max_fee: "0".to_string(),
++            min_finality_threshold: "0".to_string(),
          })
      }
  
 diff --git a/privacy-pools/cli/coinutils/src/types/snark.rs b/privacy-pools/cli/coinutils/src/types/snark.rs
-index eeba96a..addb86e 100644
+index eeba96a..bf58d66 100644
 --- a/privacy-pools/cli/coinutils/src/types/snark.rs
 +++ b/privacy-pools/cli/coinutils/src/types/snark.rs
-@@ -20,4 +20,25 @@ pub struct SnarkInput {
+@@ -20,4 +20,34 @@ pub struct SnarkInput {
      pub label_index: String,
      #[serde(rename = "labelSiblings")]
      pub label_siblings: Vec<String>,
@@ -267,4 +301,13 @@ index eeba96a..addb86e 100644
 +    pub intent_hash: String,
 +    #[serde(rename = "fillReceiptHash")]
 +    pub fill_receipt_hash: String,
++    // P1.7 WithdrawCCTP destination bindings (contract enforces these match args)
++    #[serde(rename = "destinationDomain")]
++    pub destination_domain: String,
++    #[serde(rename = "destinationRecipient")]
++    pub destination_recipient: String,
++    #[serde(rename = "maxFee")]
++    pub max_fee: String,
++    #[serde(rename = "minFinalityThreshold")]
++    pub min_finality_threshold: String,
  }

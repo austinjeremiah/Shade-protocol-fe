@@ -21,10 +21,13 @@ template Withdraw(treeDepth, associationDepth) {
     //   [3] recipientHash   [4] relayerFee     [5] deadlineLedger
     //   [6] stateRoot       [7] associationRoot[8] poolId  [9] chainId
     //   [10] quoteHash      [11] intentHash    [12] fillReceiptHash  (P1.6 RFQ)
+    //   [13] destinationDomain [14] destinationRecipient [15] maxFee
+    //   [16] minFinalityThreshold                              (P1.7 CCTP)
     //
-    // P1.6: signals [10..12] are RFQ-settlement bindings. They are APPENDED so the
-    // withdraw/cctp public-signal indices [0..9] are unchanged. For WITHDRAW_PUBLIC
-    // and WITHDRAW_CCTP these are 0; rfq_settle enforces arg==proof on them.
+    // P1.6: signals [10..12] are RFQ-settlement bindings; P1.7: signals [13..16]
+    // are WithdrawCCTP destination bindings. All are APPENDED so the existing
+    // withdraw/cctp/rfq public-signal indices [0..9] are unchanged. Each op sets
+    // the signals it doesn't use to 0; the contract enforces arg==proof per op.
     signal input operationType;         // bound op type; contract requires == op for this fn
     signal input withdrawnValue;        // RFQ: solver credit / net output
     signal input recipientHash;         // sha256(recipient strkey); contract recomputes from `to`
@@ -37,6 +40,10 @@ template Withdraw(treeDepth, associationDepth) {
     signal input quoteHash;             // P1.6 RFQ: int(sha256(quote)[:31]); contract binds arg
     signal input intentHash;            // P1.6 RFQ: int(sha256(intent)[:31]); contract binds arg
     signal input fillReceiptHash;       // P1.6 RFQ: int(sha256(fill_tx)[:31]); contract binds arg
+    signal input destinationDomain;     // P1.7 CCTP: dest domain; contract binds arg
+    signal input destinationRecipient;  // P1.7 CCTP: int(recipient32); contract binds arg
+    signal input maxFee;                // P1.7 CCTP: max fee; contract binds arg
+    signal input minFinalityThreshold;  // P1.7 CCTP: min finality threshold; contract binds arg
 
     // PRIVATE SIGNALS
     signal input label;                 // hash(scope, nonce)
@@ -113,6 +120,14 @@ template Withdraw(treeDepth, associationDepth) {
     signal qhBind <== quoteHash * quoteHash;
     signal ihBind <== intentHash * intentHash;
     signal frBind <== fillReceiptHash * fillReceiptHash;
+
+    // P1.7 CCTP destination bindings: pass-through public inputs the contract
+    // enforces (destination_domain / destination_recipient / max_fee /
+    // min_finality_threshold arg == proof signal).
+    signal ddBind <== destinationDomain * destinationDomain;
+    signal drBind <== destinationRecipient * destinationRecipient;
+    signal mfBind <== maxFee * maxFee;
+    signal ftBind <== minFinalityThreshold * minFinalityThreshold;
 }
 
-component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId, quoteHash, intentHash, fillReceiptHash]} = Withdraw(12, 2);
+component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId, quoteHash, intentHash, fillReceiptHash, destinationDomain, destinationRecipient, maxFee, minFinalityThreshold]} = Withdraw(12, 2);

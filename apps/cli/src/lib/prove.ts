@@ -120,7 +120,20 @@ export type WithdrawBinding = {
   quoteHash?: string;
   intentHash?: string;
   fillReceiptHash?: string;
+  // P1.7 WithdrawCCTP destination bindings (decimal field elements; default "0").
+  destinationDomain?: string;
+  destinationRecipient?: string; // int(recipient32 bytes)
+  maxFee?: string;
+  minFinalityThreshold?: string;
 };
+
+// P1.7: convert a 0x-prefixed 32-byte CCTP mintRecipient to the contract's field
+// element (the integer value of the 32 bytes). The 12 leading zero bytes keep it
+// well under the BLS field modulus; the contract compares the raw 32-byte arg.
+export function recipient32ToField(hex32: string): string {
+  const h = hex32.startsWith("0x") ? hex32.slice(2) : hex32;
+  return BigInt("0x" + h).toString();
+}
 
 // recipient_hash field element matching the contract: sha256(strkey)[:31 bytes].
 export function recipientHashField(strkey: string): string {
@@ -158,7 +171,12 @@ export function buildNoteProof(
     // P1.6 RFQ bindings (default "0" for withdraw/cctp).
     "--quote-hash", b.quoteHash ?? "0",
     "--intent-hash", b.intentHash ?? "0",
-    "--fill-receipt-hash", b.fillReceiptHash ?? "0"
+    "--fill-receipt-hash", b.fillReceiptHash ?? "0",
+    // P1.7 CCTP bindings (default "0" for withdraw/rfq).
+    "--destination-domain", b.destinationDomain ?? "0",
+    "--destination-recipient", b.destinationRecipient ?? "0",
+    "--max-fee", b.maxFee ?? "0",
+    "--min-finality-threshold", b.minFinalityThreshold ?? "0"
   ], { encoding: "utf8" });
   const input = JSON.parse(readFileSync(inputPath, "utf8"));
   const stateRootHex = "0x" + BigInt(input.stateRoot).toString(16).padStart(64, "0");

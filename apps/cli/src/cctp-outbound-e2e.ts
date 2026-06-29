@@ -6,7 +6,7 @@ import { sorobanInvoke } from "@shade/stellar-utils";
 import { loadRuntimeEnv, requireKeys } from "./lib/env.js";
 import { failIfAny, writeCheckReport, type CheckResult } from "./lib/report.js";
 import { runCctpInbound } from "./lib/cctp-inbound.js";
-import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet } from "./lib/prove.js";
+import { generateCoin, buildNoteProof, computeStateRoot, buildAssociationSet, recipient32ToField } from "./lib/prove.js";
 
 import { scratchDir } from "./lib/paths.js";
 const SCRATCH = scratchDir();
@@ -47,16 +47,47 @@ const inbound = await runCctpInbound(env, {
 results.push({ name: "note funded into pool (CCTP inbound)", ok: true, detail: `leaf ${inbound.leafIndex}` });
 const onchainRoot = poolRead("get_root");
 
-// 2) Build the note-ownership proof.
-const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_exit", SCRATCH, "exit", assoc.assocPath);
+// 2) CCTP outbound parameters — bound into the proof (P1.7) so a relayer cannot
+//    redirect the burn, change domain, or alter fee/threshold.
+const exitAmount7 = BigInt(coin.value7dp);
+const maxFee7 = exitAmount7 / 1000n > 0n ? exitAmount7 / 1000n : 1n; // fast-transfer fee budget
+const destDomain = LOCKED_CCTP.arbitrumSepoliaDomain;
+const minFinality = 1000;
+const exitDeadlineLedger = "999999999";
+
+// 3) Build the note-ownership proof WITH P1.7 destination bindings (op_type=2).
+const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_exit", SCRATCH, "exit", assoc.assocPath, {
+  operationType: "2",
+  recipientHash: "0",
+  relayerFee: "0",
+  deadlineLedger: exitDeadlineLedger,
+  destinationDomain: String(destDomain),
+  destinationRecipient: recipient32ToField(recipient32),
+  maxFee: maxFee7.toString(),
+  minFinalityThreshold: String(minFinality)
+});
 results.push({ name: "exit proof locally verified", ok: proof.locallyVerified, detail: proof.locallyVerified ? "OK" : "FAILED" });
 const rootMatch = proof.stateRootHex.toLowerCase() === ("0x" + onchainRoot.toLowerCase());
 results.push({ name: "circuit stateRoot == pool root", ok: rootMatch, detail: rootMatch ? "match" : `${proof.stateRootHex} vs 0x${onchainRoot}` });
 
-// 3) Proof-bound outbound burn on Stellar (pool burns USDC via CCTP to Arbitrum).
-//    Signed by the note owner (user) so destination/amount cannot be mutated by a relayer.
-const exitAmount7 = BigInt(coin.value7dp);
-const maxFee7 = exitAmount7 / 1000n > 0n ? exitAmount7 / 1000n : 1n; // fast-transfer fee budget
+// 3b) NEGATIVE (P1.7): a relayer reuses the valid user proof but redirects the
+//     burn to a DIFFERENT Arbitrum recipient. The proof binds the original
+//     recipient, so the contract must reject with WrongDestRecipient (#18).
+const attackerRecipient32 = "0x" + "00".repeat(12) + "dead".repeat(10); // 12 zero + 20 addr bytes
+let redirectRejected = false; let redirectErr = "";
+try {
+  sorobanInvoke({
+    contractId: pool, secret: userSecret, method: "withdraw_cctp",
+    args: ["--to", env.STELLAR_USER_PUBLIC, "--proof_bytes", proof.proofHex, "--pub_signals_bytes", proof.publicHex,
+      "--destination_domain", String(destDomain), "--destination_recipient", attackerRecipient32.slice(2),
+      "--max_fee", maxFee7.toString(), "--min_finality_threshold", String(minFinality)],
+    rpcUrl: rpc, passphrase: pass, retries: 1
+  });
+} catch (e) { redirectRejected = true; redirectErr = (e as Error).message; }
+results.push({ name: "P1.7 relayer cannot redirect CCTP burn (proof binds recipient)", ok: redirectRejected, detail: redirectRejected ? (/#18|WrongDestRecipient/.test(redirectErr) ? "rejected Error(Contract, #18) WrongDestRecipient" : `rejected: ${redirectErr.slice(0, 80)}`) : "NOT rejected!" });
+
+// 4) Proof-bound outbound burn on Stellar (pool burns USDC via CCTP to Arbitrum).
+//    Signed by the note owner (user); destination/fee/threshold bound by the proof.
 let burnTxHash = "";
 let outboundOk = false;
 let outboundDetail = "";
@@ -69,10 +100,10 @@ try {
       "--to", env.STELLAR_USER_PUBLIC,
       "--proof_bytes", proof.proofHex,
       "--pub_signals_bytes", proof.publicHex,
-      "--destination_domain", String(LOCKED_CCTP.arbitrumSepoliaDomain),
+      "--destination_domain", String(destDomain),
       "--destination_recipient", recipient32.slice(2),
       "--max_fee", maxFee7.toString(),
-      "--min_finality_threshold", "1000"
+      "--min_finality_threshold", String(minFinality)
     ],
     rpcUrl: rpc,
     passphrase: pass,

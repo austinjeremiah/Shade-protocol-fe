@@ -7,9 +7,9 @@ work. Each is verified on Stellar testnet.
 
 | Contract | ID | Notes |
 |---|---|---|
-| ShadePool (shielded_pool) | `CAE7NCPROLSJTN5PCN3VQMBGTLT7UH3KOWDCUULF42SWC5B4MW2A6BPJ` | canonical settlement contract (P1.6 redeploy) |
+| ShadePool (shielded_pool) | `CDW5IPO7IIPC2IBUCLUTZKVNGSJAR62ASXRZZTK5STAQXWAXKOWGCQCE` | canonical settlement contract (P1.7 redeploy) |
 | NullifierRegistry | `CBAKCITRZLJZFQC4ISSYH5UESYFUYBFRANVM5VPDA6OH3VDTSLQ2IH67` | authorized-spender locked |
-| VerifierWithdraw | `CCQYWSZ7ODLA5RDOA4G52IITQXNVVKQIUDTT34IYMQSUQM2TOESQOYGF` | admin-gated set_vk; 13-signal vk (P1.6) |
+| VerifierWithdraw | `CCAO4CASJGP57A4SOQTSQO7JWAY4WXXQRU4EUOZGMCR3QF62VOIMCYY5` | admin-gated set_vk; 17-signal vk (P1.7) |
 | VerifierTransfer | `CDBCXL3RLJM7SSZUV2ULCKIKX3FE4KCXRNRFAUXE7PS4YZGDXQSFZ7T5` | admin-gated set_vk |
 
 ## Done
@@ -87,10 +87,36 @@ verifier `CCQYWSZ7ODLA5RDOA4G52IITQXNVVKQIUDTT34IYMQSUQM2TOESQOYGF`):
   `Error(Contract, #14) WrongQuote` (binding check precedes nullifier spend). PASS.
 - Double-settle rejected (nullifier already spent). PASS.
 
+### P1.7 — WithdrawCCTP destination binding (domain/recipient/fee/threshold/op/deadline)
+The shared withdraw circuit gained 4 more APPENDED public signals (now 17 total;
+indices [0..12] unchanged):
+`[13] destinationDomain  [14] destinationRecipient  [15] maxFee  [16] minFinalityThreshold`.
+`destinationRecipient` is bound as the integer value of the 32-byte CCTP
+mintRecipient (12 leading zero bytes keep it under the field modulus). The
+contract `withdraw_cctp` enforces:
+- `operationType == WITHDRAW_CCTP (2)` (else `#11 WrongOperation`)
+- `deadlineLedger >= ledger` (else `#13 Expired`)
+- `destination_domain arg` == proof signal[13] (else `#17 WrongDestDomain`)
+- `destination_recipient arg` == proof signal[14] (else `#18 WrongDestRecipient`)
+- `max_fee arg` == proof signal[15] (else `#19 WrongMaxFee`)
+- `min_finality_threshold arg` == proof signal[16] (else `#20 WrongFinality`)
+All binding checks run BEFORE the nullifier spend and the CCTP burn. This closes
+the gap that `to.require_auth()` only binds the Stellar note owner, NOT the
+Arbitrum destination — so a relayer could previously redirect the burn. This is
+Definition-of-Done #5.
+
+On-chain proof (pool `CDW5IPO7IIPC2IBUCLUTZKVNGSJAR62ASXRZZTK5STAQXWAXKOWGCQCE`,
+verifier `CCAO4CASJGP57A4SOQTSQO7JWAY4WXXQRU4EUOZGMCR3QF62VOIMCYY5`):
+- Proof-bound outbound burn tx `88754dbef2ce344f57914008c359cde3c2f1befdc9fa9a5eb00ccb45cb784e01`
+  — pool burned 5000000 (7dp) via Stellar CCTP to the bound Arbitrum recipient. PASS.
+- NEGATIVE: relayer redirects recipient → `Error(Contract, #18) WrongDestRecipient`. PASS.
+- NEGATIVE: relayer tampers max_fee → `Error(Contract, #19) WrongMaxFee`. PASS.
+- NEGATIVE: relayer tampers domain → `Error(Contract, #17) WrongDestDomain`. PASS.
+- REGRESSION: RFQ (P1.6) still settles against this 17-signal pool — tx
+  `2bf31ede4565f83681de9545136a585fd42cd02d4424c59d95fd4a5fe1944c13`. PASS.
+
 ## Remaining PHASE 1 (next)
 
-- **P1.7 — WithdrawCCTP binding:** bind destination_domain, destination_recipient,
-  max_fee, finality_threshold, deadline. (Definition-of-Done #5 for exit.)
 - **P1.8 — deposit_note_mint circuit** binding the CCTP message to the note.
 - **P1.4/8 — deposit_note_mint circuit** binding the CCTP message to the note.
 - **P1.1 — Canonical naming:** document `shielded_pool` as `ShadePool` and mark

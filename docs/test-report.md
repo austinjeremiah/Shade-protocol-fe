@@ -254,3 +254,12 @@ See `docs/blockers.md` for the (now minor) remaining items.
 - solver credited from pool: PASS - pool 9998700 -> 4998700 (credited 5000000 7dp)
 - settlement spends nullifier once (no double-settle): PASS - second settle rejected
 - RFQ state machine transitions: PASS - INTENT_CREATED -> INTENT_ENCRYPTED -> INTENT_PUBLISHED_TO_ALLOWED_SOLVERS -> QUOTE_RECEIVED -> QUOTE_VALIDATED -> QUOTE_ACCEPTED -> SOLVER_INVENTORY_LOCKED -> FILL_CREATED -> FILL_EXECUTED_IF_REQUIRED -> PROOF_REQUESTED -> PROOF_GENERATED -> PROOF_VERIFIED_LOCALLY -> SETTLEMENT_SUBMITTED -> SETTLED
+
+## CCTP Outbound E2E (proof-bound Stellar -> Arbitrum)
+
+- outbound env/contracts: PASS - present
+- note funded into pool (CCTP inbound): PASS - leaf 0
+- exit proof locally verified: PASS - OK
+- circuit stateRoot == pool root: PASS - match
+- P1.7 relayer cannot redirect CCTP burn (proof binds recipient): PASS - rejected Error(Contract, #18) WrongDestRecipient
+- proof-bound Stellar CCTP outbound burn: FAIL - stellar contract invoke withdraw_cctp failed: ❌ error: transaction simulation failed: HostError: Error(Contract, #4)  Event log (newest first):
