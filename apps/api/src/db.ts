@@ -137,6 +137,79 @@ export class Store {
     return (r.rowCount ?? 0) > 0;
   }
 
+  // ---- Note vaults (PHASE 4) ----
+
+  async createNoteVault(input: { userId: string; privyUserId: string; vaultId: string; envelope: unknown; ciphertext: string; aad: unknown; recoveryPolicyStatus: string }): Promise<void> {
+    await this.pool.query(
+      `insert into note_vaults(user_id, privy_user_id, vault_id, envelope, ciphertext, aad, backup_status, recovery_policy_status)
+       values ($1,$2,$3,$4,$5,$6,'created',$7)
+       on conflict (vault_id) do update set envelope=excluded.envelope, ciphertext=excluded.ciphertext, aad=excluded.aad,
+         recovery_policy_status=excluded.recovery_policy_status, updated_at=now()`,
+      [input.userId, input.privyUserId, input.vaultId, input.envelope, input.ciphertext, input.aad, input.recoveryPolicyStatus]
+    );
+  }
+
+  async listNoteVaults(userId: string): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query(
+      "select vault_id, backup_status, recovery_policy_status, last_backup_verified_at, last_restored_at, created_at, updated_at from note_vaults where user_id=$1 order by created_at desc",
+      [userId]
+    );
+    return rows;
+  }
+
+  async getNoteVault(userId: string, vaultId: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool.query("select * from note_vaults where user_id=$1 and vault_id=$2", [userId, vaultId]);
+    return rows[0] ?? null;
+  }
+
+  async updateNoteVault(userId: string, vaultId: string, input: { envelope: unknown; ciphertext: string; aad: unknown; recoveryPolicyStatus: string }): Promise<boolean> {
+    const r = await this.pool.query(
+      "update note_vaults set envelope=$3, ciphertext=$4, aad=$5, recovery_policy_status=$6, updated_at=now() where user_id=$1 and vault_id=$2",
+      [userId, vaultId, input.envelope, input.ciphertext, input.aad, input.recoveryPolicyStatus]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async setVaultBackupStatus(userId: string, vaultId: string, status: "verified" | "restored" | "failed"): Promise<boolean> {
+    const col = status === "verified" ? "last_backup_verified_at" : status === "restored" ? "last_restored_at" : null;
+    const set = col ? `, ${col}=now()` : "";
+    const r = await this.pool.query(`update note_vaults set backup_status=$3${set}, updated_at=now() where user_id=$1 and vault_id=$2`, [userId, vaultId, status]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async setVaultRecoveryPolicy(vaultId: string, status: string): Promise<void> {
+    await this.pool.query("update note_vaults set recovery_policy_status=$2, updated_at=now() where vault_id=$1", [vaultId, status]);
+  }
+
+  // Vault deposit-readiness: backup verified AND recovery policy sufficient/strong.
+  async vaultDepositReady(userId: string, vaultId: string): Promise<{ ready: boolean; backup_status: string; recovery_policy_status: string } | null> {
+    const { rows } = await this.pool.query<{ backup_status: string; recovery_policy_status: string }>(
+      "select backup_status, recovery_policy_status from note_vaults where user_id=$1 and vault_id=$2",
+      [userId, vaultId]
+    );
+    if (!rows[0]) return null;
+    const ready = rows[0].backup_status === "verified" && (rows[0].recovery_policy_status === "sufficient" || rows[0].recovery_policy_status === "strong");
+    return { ready, ...rows[0] };
+  }
+
+  async addVaultWrapper(userId: string, vaultId: string, wrapperType: string, metadata: unknown): Promise<string> {
+    const { rows } = await this.pool.query<{ id: string }>(
+      "insert into note_vault_wrappers(vault_id, user_id, wrapper_type, metadata) values ($1,$2,$3,$4) returning id",
+      [vaultId, userId, wrapperType, metadata ?? {}]
+    );
+    return rows[0].id;
+  }
+
+  async deleteVaultWrapper(userId: string, vaultId: string, wrapperId: string): Promise<boolean> {
+    const r = await this.pool.query("delete from note_vault_wrappers where id=$1 and vault_id=$2 and user_id=$3", [wrapperId, vaultId, userId]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async listVaultWrappers(vaultId: string): Promise<Array<{ wrapper_type: string; wrapper_status: string; metadata: Record<string, unknown> }>> {
+    const { rows } = await this.pool.query("select wrapper_type, wrapper_status, metadata from note_vault_wrappers where vault_id=$1", [vaultId]);
+    return rows as Array<{ wrapper_type: string; wrapper_status: string; metadata: Record<string, unknown> }>;
+  }
+
   // ---- PHASE 2 auth / users ----
 
   async createNonce(walletType: string, address: string, nonce: string, message: string, expiresAt: Date): Promise<void> {

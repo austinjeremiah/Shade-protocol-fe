@@ -112,3 +112,32 @@ export const requestQuotesSchema = z.object({
   amount: z.string().regex(/^\d+$/),
   expiry_ledger: z.number().int().positive().optional()
 });
+
+// ---- PHASE 4 note-vault schemas ----
+
+const vaultWrapperSchema = z.object({
+  id: z.string(),
+  type: z.enum(["passkey_prf", "stellar_ed25519_signature", "recovery_kit_password", "evm_signature"]),
+  status: z.enum(["active", "revoked"]),
+  kdf: z.enum(["HKDF-SHA256", "PBKDF2-SHA256"]),
+  salt: z.string(),
+  wrapped_key: z.string(),
+  diagnostic_only: z.boolean().optional(),
+  metadata: z.record(z.unknown())
+});
+
+export const encryptedVaultEnvelopeSchema = z.object({
+  version: z.literal("shade-encrypted-vault-v1"),
+  vault_id: z.string().min(1),
+  privy_user_id: z.string().min(1),
+  cipher: z.object({ name: z.literal("AES-256-GCM"), iv: z.string(), tagLength: z.literal(128) }),
+  aad: z.record(z.unknown()),
+  ciphertext: z.string().min(1),
+  wrappers: z.array(vaultWrapperSchema)
+});
+
+export const addWrapperSchema = z.object({
+  wrapper: vaultWrapperSchema,
+  // updated full envelope (the client re-encrypts/re-wraps client-side and uploads)
+  envelope: encryptedVaultEnvelopeSchema
+});

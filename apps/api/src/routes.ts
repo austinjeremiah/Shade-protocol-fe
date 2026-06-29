@@ -6,7 +6,16 @@ import { hashJson, deterministicId } from "@shade/shared-types/ids";
 import { intentSchema, quoteSchema } from "@shade/rfq-types";
 import { JobQueue } from "@shade/queue";
 import { requirePrivyUser, optionalPrivyUser } from "@shade/auth-privy";
+import { validateVaultEnvelope, assertNoPlaintextNoteFields, evaluateRecoveryPolicy, type VaultWrapper, type EncryptedVaultEnvelope } from "@shade/note-vault";
 import { Store } from "./db.js";
+
+// Recovery policy from the env-configured minimums (audit.md PHASE 4).
+function recoveryPolicyFor(wrappers: VaultWrapper[]): "insufficient" | "sufficient" | "strong" {
+  const mainnet = (process.env.SHADE_NETWORK_MODE ?? "testnet") === "mainnet";
+  const min = Number(mainnet ? (process.env.SHADE_MIN_RECOVERY_WRAPPERS_MAINNET ?? "2") : (process.env.SHADE_MIN_RECOVERY_WRAPPERS_TESTNET ?? "1"));
+  const allowEvmOnly = process.env.ALLOW_EVM_SIGNATURE_ONLY_RECOVERY === "true";
+  return evaluateRecoveryPolicy(wrappers, { mainnet, min, allowEvmOnly });
+}
 
 // Privy is the canonical identity by default. The legacy custom wallet-nonce auth
 // is dev-only behind ENABLE_LEGACY_WALLET_AUTH=true. Read at call time so tests and
@@ -20,9 +29,11 @@ import {
 } from "./auth.js";
 import {
   addWalletSchema,
+  addWrapperSchema,
   authNonceSchema,
   authVerifySchema,
   cctpExitSchema,
+  encryptedVaultEnvelopeSchema,
   fillSchema,
   idempotencyHeader,
   lockSchema,
@@ -224,6 +235,87 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     await store.addNoteBackup(userId, body.commitment, body.encrypted_payload, body.encryption_version);
     await store.logActivity(userId, { event_type: "note.backup", entity_type: "note", entity_id: body.commitment });
     return { ok: true, commitment: body.commitment };
+  });
+
+  // ---- Note vaults (PHASE 4): encrypted-vault storage + recovery policy ----
+  // The backend stores only ciphertext + wrapped keys and rejects plaintext.
+  const ingestEnvelope = (env: EncryptedVaultEnvelope) => {
+    validateVaultEnvelope(env);            // shape + plaintext gate
+    assertNoPlaintextNoteFields(env);      // belt-and-suspenders
+    return recoveryPolicyFor(env.wrappers as VaultWrapper[]);
+  };
+
+  app.post("/v1/note-vaults", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    assertNoPlaintextNoteFields(request.body); // scan RAW body before zod can strip unknown keys
+    const env = encryptedVaultEnvelopeSchema.parse((request.body as { envelope: unknown }).envelope) as EncryptedVaultEnvelope;
+    if (env.privy_user_id !== auth.privyUserId) { const e = new Error("envelope privy_user_id mismatch") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    const policy = ingestEnvelope(env);
+    await store.createNoteVault({ userId: auth.userId, privyUserId: auth.privyUserId, vaultId: env.vault_id, envelope: env, ciphertext: env.ciphertext, aad: env.aad, recoveryPolicyStatus: policy });
+    for (const w of env.wrappers) await store.addVaultWrapper(auth.userId, env.vault_id, w.type, w.metadata);
+    await store.logActivity(auth.userId, { event_type: "vault.create", entity_type: "vault", entity_id: env.vault_id, metadata: { recovery_policy_status: policy } });
+    return { vault_id: env.vault_id, backup_status: "created", recovery_policy_status: policy };
+  });
+
+  app.get("/v1/note-vaults", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    return { vaults: await store.listNoteVaults(auth.userId) };
+  });
+  app.get("/v1/note-vaults/:vault_id", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    const v = await store.getNoteVault(auth.userId, (request.params as { vault_id: string }).vault_id);
+    if (!v) { const e = new Error("vault not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+    return v;
+  });
+  app.put("/v1/note-vaults/:vault_id", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    assertNoPlaintextNoteFields(request.body);
+    const vaultId = (request.params as { vault_id: string }).vault_id;
+    const env = encryptedVaultEnvelopeSchema.parse((request.body as { envelope: unknown }).envelope) as EncryptedVaultEnvelope;
+    if (env.vault_id !== vaultId || env.privy_user_id !== auth.privyUserId) { const e = new Error("vault id / identity mismatch") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    const policy = ingestEnvelope(env);
+    const ok = await store.updateNoteVault(auth.userId, vaultId, { envelope: env, ciphertext: env.ciphertext, aad: env.aad, recoveryPolicyStatus: policy });
+    if (!ok) { const e = new Error("vault not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+    return { vault_id: vaultId, recovery_policy_status: policy };
+  });
+
+  // The client proves it could decrypt+restore the vault (cache-clear test) and
+  // marks the backup verified — required before deposit.
+  app.post("/v1/note-vaults/:vault_id/verify-backup", async (request, reply) => {
+    const auth = await requirePrivyUser(store, request);
+    const vaultId = (request.params as { vault_id: string }).vault_id;
+    const ok = await store.setVaultBackupStatus(auth.userId, vaultId, "verified");
+    if (!ok) { reply.code(404); return { error: "vault not found" }; }
+    await store.logActivity(auth.userId, { event_type: "vault.backup_verified", entity_type: "vault", entity_id: vaultId });
+    const ready = await store.vaultDepositReady(auth.userId, vaultId);
+    return { vault_id: vaultId, backup_status: "verified", ...ready };
+  });
+  app.post("/v1/note-vaults/:vault_id/mark-restored", async (request, reply) => {
+    const auth = await requirePrivyUser(store, request);
+    const vaultId = (request.params as { vault_id: string }).vault_id;
+    const ok = await store.setVaultBackupStatus(auth.userId, vaultId, "restored");
+    if (!ok) { reply.code(404); return { error: "vault not found" }; }
+    await store.logActivity(auth.userId, { event_type: "vault.restored", entity_type: "vault", entity_id: vaultId });
+    return { vault_id: vaultId, backup_status: "restored" };
+  });
+
+  app.post("/v1/note-vaults/:vault_id/wrappers", async (request) => {
+    const auth = await requirePrivyUser(store, request);
+    assertNoPlaintextNoteFields(request.body);
+    const vaultId = (request.params as { vault_id: string }).vault_id;
+    const body = addWrapperSchema.parse(request.body);
+    if (body.envelope.vault_id !== vaultId) { const e = new Error("vault id mismatch") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
+    const policy = ingestEnvelope(body.envelope as EncryptedVaultEnvelope);
+    await store.updateNoteVault(auth.userId, vaultId, { envelope: body.envelope, ciphertext: body.envelope.ciphertext, aad: body.envelope.aad, recoveryPolicyStatus: policy });
+    const wrapperId = await store.addVaultWrapper(auth.userId, vaultId, body.wrapper.type, body.wrapper.metadata);
+    return { wrapper_id: wrapperId, recovery_policy_status: policy };
+  });
+  app.delete("/v1/note-vaults/:vault_id/wrappers/:wrapper_id", async (request, reply) => {
+    const auth = await requirePrivyUser(store, request);
+    const { vault_id, wrapper_id } = request.params as { vault_id: string; wrapper_id: string };
+    const ok = await store.deleteVaultWrapper(auth.userId, vault_id, wrapper_id);
+    if (!ok) { reply.code(404); return { error: "wrapper not found" }; }
+    return { ok: true };
   });
 
   app.post("/v1/proofs/:kind/request", async (request) => {
