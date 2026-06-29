@@ -18,6 +18,14 @@ app.addHook("onRequest", async (request, reply) => {
   if (request.method === "OPTIONS") { reply.code(204).send(); }
 });
 
+// Map validation (Zod) + explicit statusCode errors cleanly: a bad request body
+// should be a 400, not a 500.
+app.setErrorHandler((error, _req, reply) => {
+  const e = error as { name?: string; statusCode?: number; message?: string };
+  if (e.name === "ZodError") { reply.code(400).send({ error: "invalid request body", details: e.message }); return; }
+  reply.code(e.statusCode ?? 500).send({ error: e.message ?? "internal error" });
+});
+
 await registerRoutes(app);
 
 const port = Number(process.env.API_PORT ?? 8080);

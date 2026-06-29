@@ -118,7 +118,7 @@ export const requestQuotesSchema = z.object({
 
 const vaultWrapperSchema = z.object({
   id: z.string(),
-  type: z.enum(["passkey_prf", "stellar_ed25519_signature", "recovery_kit_password", "evm_signature"]),
+  type: z.enum(["passkey_prf", "stellar_ed25519_signature", "recovery_file_secret", "recovery_kit_password", "evm_signature"]),
   status: z.enum(["active", "revoked"]),
   kdf: z.enum(["HKDF-SHA256", "PBKDF2-SHA256"]),
   salt: z.string(),
@@ -179,7 +179,7 @@ export const verifyBackupSchema = z.object({
     vault_id: z.string().min(1),
     decrypted_vault_hash: z.string().min(8),
     commitments_hash: z.string().min(1),
-    method: z.enum(["stellar_ed25519_signature", "recovery_kit_password", "passkey_prf"]),
+    method: z.enum(["stellar_ed25519_signature", "recovery_file_secret", "recovery_kit_password", "passkey_prf"]),
     verified_at_client: z.string().min(1)
   })
 });
