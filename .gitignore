@@ -46,3 +46,4 @@ docs/reports/
 apps/web/.next/
 apps/web/node_modules/
 apps/web/.env.local
+infra/.env
