@@ -55,20 +55,22 @@ function loadEnv(): EnvMap {
 
 // Compute lean-IMT Merkle root over all existing note_commitments + the two new
 // MPC output commitments, using the same coinutils binary as the root-auditor.
-// Falls back to a zeroed root if the binary is not present (dev / CI environments).
+// Falls back to a zeroed root only if the binary invocation itself fails.
 async function computeMpcRoot(
   queue: JobQueue,
   outCommitAHex: string,
   outCommitBHex: string
 ): Promise<string> {
+  // Mirror packages/proving/src/paths.ts: SHADE_ZK_REF overrides the zk-ref root.
   const shadeRoot = process.env.SHADE_ROOT ?? resolve(process.cwd(), "../..");
-  const coinutilsBin =
-    process.env.COINUTILS_BIN ??
-    resolve(shadeRoot, ".zk-ref/soroban-examples/privacy-pools/target/release/stellar-coinutils");
+  const zkRef = process.env.SHADE_ZK_REF ?? resolve(shadeRoot, ".zk-ref/soroban-examples/privacy-pools");
+  const coinutilsBin = process.env.COINUTILS_BIN ?? resolve(zkRef, "target/release/stellar-coinutils");
 
-  if (!existsSync(coinutilsBin)) return "0".repeat(64);
+  // Do NOT guard with existsSync — on Windows the binary is stellar-coinutils.exe
+  // and existsSync without the .exe suffix returns false even when the file exists.
+  // The try/catch below handles a genuinely missing binary.
 
-  // Fetch all existing leaves ordered by leaf_index.
+  // Fetch all existing pool leaves ordered by leaf_index.
   let leaves: string[] = [];
   try {
     const { rows } = await queue.query<{ commitment: string }>(
@@ -83,9 +85,9 @@ async function computeMpcRoot(
   leaves.push(toDecimal(outCommitAHex));
   leaves.push(toDecimal(outCommitBHex));
 
-  const scratchDir = process.env.SHADE_SCRATCH_DIR ?? resolve(shadeRoot, ".scratch");
-  mkdirSync(scratchDir, { recursive: true });
-  const statePath = resolve(scratchDir, `mpc_root_${Date.now()}.json`);
+  const scratchPath = process.env.SHADE_SCRATCH_DIR ?? resolve(shadeRoot, ".scratch");
+  mkdirSync(scratchPath, { recursive: true });
+  const statePath = resolve(scratchPath, `mpc_root_${Date.now()}.json`);
   writeFileSync(statePath, JSON.stringify({ commitments: leaves, scope: "mpc_settle" }));
 
   try {
