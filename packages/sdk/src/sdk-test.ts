@@ -9,7 +9,12 @@ import {
   generateVaultMasterKey,
   IntentClient,
   FreighterAdapter,
-  EvmSignerAdapter
+  EvmSignerAdapter,
+  splitAndEncryptAmount,
+  buildAmountCommitment,
+  buildValueCommitment,
+  randomBlinding,
+  type CommitteeNodeInfo
 } from "./index.js";
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -96,6 +101,48 @@ check("NoteManager.encrypt: ciphertext non-empty", ciphertext.length > 0);
 const restored = await NoteManager.decrypt(ciphertext, iv, masterKey, aad);
 check("NoteManager.decrypt: round-trip notes count", restored.notes.length === vault4.notes.length);
 check("NoteManager.decrypt: round-trip commitment", restored.notes[0].commitment === vault4.notes[0].commitment);
+
+// ---- Phase B: MPC private-intent construction ----------------------------------
+
+// Synthetic 3-node committee (matching real committee shape).
+import nacl from "tweetnacl";
+
+function syntheticNode(nodeId: string): CommitteeNodeInfo {
+  const kp = nacl.box.keyPair();
+  return {
+    nodeId,
+    encryptionPubkey: Buffer.from(kp.publicKey).toString("hex"),
+    signingPubkey: Buffer.from(nacl.sign.keyPair().publicKey).toString("hex")
+  };
+}
+const testNodes: CommitteeNodeInfo[] = ["node-1", "node-2", "node-3"].map(syntheticNode);
+
+const amount7dp = 10_000_000n; // 1 USDC (7dp)
+const shares = splitAndEncryptAmount(amount7dp, testNodes, 2);
+check("splitAndEncryptAmount: 3 shares (one per node)", shares.length === 3);
+check("splitAndEncryptAmount: all fields present", shares.every(s => s.ciphertext && s.nonce && s.senderPubkey));
+check("splitAndEncryptAmount: node IDs match", shares.map(s => s.nodeId).join(",") === "node-1,node-2,node-3");
+check("splitAndEncryptAmount: each ciphertext unique", new Set(shares.map(s => s.ciphertext)).size === 3);
+
+const blinding = randomBlinding();
+check("randomBlinding: 32 bytes hex", blinding.length === 64 && /^[0-9a-f]+$/.test(blinding));
+
+const commitment = await buildAmountCommitment(amount7dp, blinding);
+check("buildAmountCommitment: starts 0x", commitment.startsWith("0x"));
+check("buildAmountCommitment: 32 bytes", commitment.length === 66);
+
+const commitment2 = await buildAmountCommitment(amount7dp, blinding);
+check("buildAmountCommitment: deterministic (same inputs)", commitment === commitment2);
+
+const commitmentDiff = await buildAmountCommitment(amount7dp + 1n, blinding);
+check("buildAmountCommitment: different amount → different commitment", commitment !== commitmentDiff);
+
+const commitmentBlindDiff = await buildAmountCommitment(amount7dp, randomBlinding());
+check("buildAmountCommitment: different blinding → different commitment", commitment !== commitmentBlindDiff);
+
+const valCommit = await buildValueCommitment("0xE488bb2bd58E9C425F525293856FAA529f7b1db3", blinding);
+check("buildValueCommitment: 32 bytes", valCommit.length === 66);
+check("buildValueCommitment: differs from amount commitment", valCommit !== commitment);
 
 // ---- IntentClient (structure only — no network) --------------------------------
 

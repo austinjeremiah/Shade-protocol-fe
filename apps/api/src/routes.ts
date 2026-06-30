@@ -494,6 +494,11 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     await store.transition({ entityType: "intent", entityId: intentHash, toState: "INTENT_CREATED" });
     await store.logActivity(userId, { event_type: "intent.create", entity_type: "intent", entity_id: intentHash });
 
+    // Log privacy level so operators know which path each intent is on.
+    if (!body.encrypted_shares?.length) {
+      console.warn(`[rfq] intent ${intentHash} on solver path (no encrypted_shares) — amount visible to API`);
+    }
+
     // MPC path: all four fields present → route to private committee matching.
     // Uses the RFQ intent_hash as the MPC intentId so the two are unified by ID —
     // no separate lookup column needed. Non-fatal: MPC down ≠ intent creation fails.

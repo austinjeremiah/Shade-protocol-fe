@@ -1,30 +1,62 @@
 // IntentClient — submits private RFQ intents to the Shade API and tracks lifecycle.
 // Uses fetch (browser-native). Pass an authToken from Privy for authenticated routes.
 
+import type { CommitteeNodeInfo, EncryptedAmountShare } from "./mpc.js";
+import { splitAndEncryptAmount, buildAmountCommitment, buildValueCommitment, randomBlinding } from "./mpc.js";
+
+// Re-exported for callers who import solely from @shade/sdk.
+export type { CommitteeNodeInfo } from "./mpc.js";
+
+// EncryptedShare — per-node Shamir ciphertext (same shape as EncryptedAmountShare).
 export type EncryptedShare = {
   nodeId: string;
-  ciphertext: string;   // hex
-  nonce: string;        // hex
-  senderPubkey: string; // hex, ephemeral X25519 pubkey
+  ciphertext: string;
+  nonce: string;
+  senderPubkey: string;
+};
+
+// Blinding values retained by the client after buildPrivateIntent().
+// Required for Phase C ZK proof (proves amount_commitment = hash(amount, blinding)).
+export type IntentBlindings = {
+  amountBlinding: string;
+  minOutputBlinding: string;
+  destinationBlinding: string;
 };
 
 export type IntentParams = {
-  inputAsset: string;          // "USDC:Stellar:SAC"
-  outputAsset: string;         // "USDC:ArbitrumSepolia"
+  inputAsset: string;
+  outputAsset: string;
   amountMode: "exact_in" | "exact_out" | "max_in";
-  amount7dp: string;           // input amount in 7dp
-  minOutput7dp: string;        // minimum acceptable output in 7dp
-  expiryLedger: number;        // Stellar ledger sequence after which intent is void
+  amount7dp: string;           // input amount 7dp — used only by submit(); not sent to API
+  minOutput7dp: string;
+  expiryLedger: number;
   noteCommitment: string;      // 0x.. Poseidon commitment of the deposited input note
-  destination: string;         // EVM address for Path A payout
+  destination: string;         // EVM address (Path A) or output commitment (MPC path)
   policyId?: string;
 
-  // MPC private matching path (optional).
-  // When all four are provided, POST /v1/intents routes to the committee and
-  // POST /v1/rfq/settle will require a confirmed MPC match before settlement.
-  noteNullifier?: string;       // nullifier of the input note (hex)
-  recipientCommitment?: string; // output note commitment for the counterparty (hex)
-  encryptedShares?: EncryptedShare[]; // one Shamir share per committee node
+  // MPC private matching path — supply all four to enable private routing.
+  // When present, POST /v1/intents forwards to the committee and
+  // POST /v1/rfq/settle requires a confirmed MPC match before settlement.
+  noteNullifier?: string;
+  recipientCommitment?: string;
+  encryptedShares?: EncryptedShare[];
+};
+
+// Parameters for the full private-intent construction pipeline.
+// The plaintext amount never leaves buildPrivateIntent() — only commitments
+// and encrypted Shamir shares are included in the submitted payload.
+export type PrivateIntentBuildParams = {
+  amount7dp: bigint;
+  minOutput7dp: bigint;
+  noteCommitment: string;      // Poseidon commitment of the input note
+  noteNullifier: string;       // nullifier of the input note (hex)
+  recipientCommitment: string; // output note commitment for the counterparty
+  destinationAddress: string;  // EVM address that will receive the payout
+  inputAsset: string;
+  outputAsset: string;
+  expiryLedger: number;
+  policyId?: string;
+  signature?: string;          // user signature over the intent hash (hex)
 };
 
 export type QuoteResult = {
@@ -77,6 +109,65 @@ export class IntentClient {
     const res = await fetch(`${this.apiBase}${path}`, { headers: this.headers });
     if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${await res.text()}`);
     return res.json() as Promise<T>;
+  }
+
+  // Fetch the MPC committee's public keys. Required before buildPrivateIntent().
+  async fetchCommittee(): Promise<CommitteeNodeInfo[]> {
+    const data = await this.get<{ nodes: CommitteeNodeInfo[] }>("/v1/mpc/committee");
+    return data.nodes;
+  }
+
+  /**
+   * Full private-intent construction pipeline.
+   *
+   * The plaintext amount never leaves this method — only SHA-256 commitments
+   * (amount_commitment, min_output_commitment, destination_commitment) and
+   * per-node Shamir ciphertext (encrypted_shares) are included in the payload.
+   *
+   * Callers should store the returned `blindings` alongside the local note; they
+   * are required for Phase C ZK proof generation.
+   *
+   * Usage:
+   *   const { payload, blindings } = await client.buildPrivateIntent({ ... });
+   *   const result = await client.submit(payload);
+   */
+  async buildPrivateIntent(p: PrivateIntentBuildParams): Promise<{
+    payload: IntentParams;
+    blindings: IntentBlindings;
+  }> {
+    const nodes = await this.fetchCommittee();
+
+    // Three independent random blindings — one per committed value.
+    const amountBlinding = randomBlinding();
+    const minOutputBlinding = randomBlinding();
+    const destinationBlinding = randomBlinding();
+
+    const [amountCommitment, minOutputCommitment, destinationCommitment] = await Promise.all([
+      buildAmountCommitment(p.amount7dp, amountBlinding),
+      buildAmountCommitment(p.minOutput7dp, minOutputBlinding),
+      buildValueCommitment(p.destinationAddress, destinationBlinding)
+    ]);
+
+    // Amount is Shamir-split and encrypted per node. No plaintext amount in payload.
+    const encryptedShares = splitAndEncryptAmount(p.amount7dp, nodes);
+
+    return {
+      payload: {
+        inputAsset: p.inputAsset,
+        outputAsset: p.outputAsset,
+        amountMode: "exact_in",
+        amount7dp: amountCommitment,      // commitment travels, not plaintext
+        minOutput7dp: minOutputCommitment,
+        expiryLedger: p.expiryLedger,
+        noteCommitment: p.noteCommitment,
+        destination: destinationCommitment,
+        policyId: p.policyId,
+        noteNullifier: p.noteNullifier,
+        recipientCommitment: p.recipientCommitment,
+        encryptedShares
+      },
+      blindings: { amountBlinding, minOutputBlinding, destinationBlinding }
+    };
   }
 
   // Submit a private RFQ intent. Returns intentHash + optional mpc_session_id.
