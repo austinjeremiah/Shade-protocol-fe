@@ -9,6 +9,7 @@ import {
 import { CommitteeState } from "./state.js";
 import { runMatchingRound } from "./coordinator.js";
 import { runSettlerLoop } from "./settler.js";
+import { loadOrGenerateKeys } from "./keys.js";
 
 // Three committee nodes run in the same process (simulating a distributed committee).
 // Each node has its own key pair. In production they'd be separate services.
@@ -17,7 +18,12 @@ const NODE_PORTS = { "node-1": 8091, "node-2": 8092, "node-3": 8093 } as const;
 const COORDINATOR_PORT = 8090;
 const BATCH_WINDOW_MS = Number(process.env.MPC_BATCH_WINDOW_MS ?? 30_000); // 30 s default
 
-const nodes = NODE_IDS.map(id => generateNodeKeyPair(id));
+// Load keypairs from DB if available; otherwise generate ephemeral ones (no-DB mode).
+const dbUrl = process.env.DATABASE_URL;
+const nodes = dbUrl
+  ? await loadOrGenerateKeys(dbUrl, NODE_IDS)
+  : NODE_IDS.map(id => generateNodeKeyPair(id));
+
 const nodeMap = new Map(nodes.map(n => [n.nodeId, n]));
 const committeeInfo = nodes.map(nodePublicInfo);
 
@@ -205,7 +211,6 @@ startBatchTimer();
 console.log("[mpc] committee running. coordinator=:8090 nodes=:8091-8093");
 
 // Settler runs only when the DB is configured (not during unit tests / mpc:e2e demo).
-const dbUrl = process.env.DATABASE_URL;
 if (dbUrl) {
   const SETTLER_INTERVAL_MS = Number(process.env.MPC_SETTLER_INTERVAL_MS ?? 10_000);
   runSettlerLoop(dbUrl, SETTLER_INTERVAL_MS).catch(err => {

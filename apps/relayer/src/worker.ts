@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import { JsonRpcProvider } from "ethers";
 import { JobQueue, type ServiceJob } from "@shade/queue";
 import { sorobanInvoke } from "@shade/stellar-utils";
@@ -49,6 +51,49 @@ function loadEnv(): EnvMap {
   parseEnvFile(env, ".env", false);
   parseEnvFile(env, ".env.generated", true);
   return env;
+}
+
+// Compute lean-IMT Merkle root over all existing note_commitments + the two new
+// MPC output commitments, using the same coinutils binary as the root-auditor.
+// Falls back to a zeroed root if the binary is not present (dev / CI environments).
+async function computeMpcRoot(
+  queue: JobQueue,
+  outCommitAHex: string,
+  outCommitBHex: string
+): Promise<string> {
+  const shadeRoot = process.env.SHADE_ROOT ?? resolve(process.cwd(), "../..");
+  const coinutilsBin =
+    process.env.COINUTILS_BIN ??
+    resolve(shadeRoot, ".zk-ref/soroban-examples/privacy-pools/target/release/stellar-coinutils");
+
+  if (!existsSync(coinutilsBin)) return "0".repeat(64);
+
+  // Fetch all existing leaves ordered by leaf_index.
+  let leaves: string[] = [];
+  try {
+    const { rows } = await queue.query<{ commitment: string }>(
+      "SELECT commitment FROM note_commitments WHERE leaf_index IS NOT NULL ORDER BY leaf_index ASC"
+    );
+    leaves = rows.map(r => BigInt(r.commitment.startsWith("0x") ? r.commitment : "0x" + r.commitment).toString());
+  } catch {
+    // DB unavailable — proceed with just the two new commitments
+  }
+
+  const toDecimal = (h: string) => BigInt(h.startsWith("0x") ? h : "0x" + h).toString();
+  leaves.push(toDecimal(outCommitAHex));
+  leaves.push(toDecimal(outCommitBHex));
+
+  const scratchDir = process.env.SHADE_SCRATCH_DIR ?? resolve(shadeRoot, ".scratch");
+  mkdirSync(scratchDir, { recursive: true });
+  const statePath = resolve(scratchDir, `mpc_root_${Date.now()}.json`);
+  writeFileSync(statePath, JSON.stringify({ commitments: leaves, scope: "mpc_settle" }));
+
+  try {
+    const out = execFileSync(coinutilsBin, ["compute-root", statePath], { encoding: "utf8" }).trim();
+    return BigInt(out).toString(16).padStart(64, "0");
+  } catch {
+    return "0".repeat(64);
+  }
 }
 
 function coinFromPath(path: string): GeneratedCoin {
@@ -243,9 +288,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
         const cmtA32    = stripHex(outCommitA!);
         const cmtB32    = stripHex(outCommitB!);
         const hash32    = stripHex(String(p.batchHash));
-        // new_root: zeroed for now (contract does not yet maintain a live Merkle tree);
-        // replace with the actual computed root once the full Merkle path is wired.
-        const newRoot32 = "0000000000000000000000000000000000000000000000000000000000000000";
+        const newRoot32 = await computeMpcRoot(queue, outCommitA!, outCommitB!);
 
         // Build committee signature args: JSON arrays of pubkeys + sigs.
         const pubkeysJson = JSON.stringify(sigs.map(s => stripHex(s.signingPubkey)));

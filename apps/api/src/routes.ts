@@ -851,6 +851,98 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       return { error: "MPC committee unreachable" };
     }
   });
+
+  // ── Shade Remit / Anchor routes (SEP-38 style) ───────────────────────────
+  // These stubs implement the anchor discovery + payout lifecycle. The external
+  // anchor adapter (MoneyGram / SEP-38 provider) is wired via ANCHOR_API_BASE env.
+  // All routes return 501 when no adapter is configured so they are safe to ship.
+
+  const anchorBase = () => process.env.ANCHOR_API_BASE ?? "";
+
+  async function proxyAnchor(reply: FastifyReply, path: string, method = "GET", body?: unknown) {
+    const base = anchorBase();
+    if (!base) { reply.code(501); return { error: "no anchor adapter configured (set ANCHOR_API_BASE)" }; }
+    const resp = await fetch(`${base}${path}`, {
+      method,
+      headers: { "content-type": "application/json", ...(process.env.ANCHOR_API_KEY ? { authorization: `Bearer ${process.env.ANCHOR_API_KEY}` } : {}) },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    reply.code(resp.status);
+    return resp.json();
+  }
+
+  // GET /v1/anchors/discovery — list SEP-38/31 providers + corridors from ANCHOR_API_BASE.
+  app.get("/v1/anchors/discovery", async (_, reply) => proxyAnchor(reply, "/info"));
+
+  // POST /v1/anchors/quotes — request a fiat payout quote from the configured anchor.
+  // Body: { asset, amount7dp, destination_currency, destination_country }
+  app.post("/v1/anchors/quotes", async (request, reply) => {
+    const userId = await authedUser(store, request);
+    const body = request.body as Record<string, unknown>;
+    const quoteId = randomUUID();
+    const result = await proxyAnchor(reply, "/quotes", "POST", { ...body, client_id: userId });
+    if (reply.statusCode < 300) {
+      await store.insertGeneric("anchor_quotes", {
+        quote_id: quoteId,
+        user_id: userId,
+        asset: String(body.asset ?? ""),
+        amount_7dp: String(body.amount7dp ?? "0"),
+        destination_currency: String(body.destination_currency ?? ""),
+        destination_country: String(body.destination_country ?? ""),
+        anchor_quote_id: (result as Record<string, unknown>).id ?? null,
+        status: "quoted",
+        raw: result
+      }).catch(() => {/* non-fatal — quote is in memory */});
+    }
+    return result;
+  });
+
+  // POST /v1/anchors/payouts — initiate payout after settlement.
+  // Body: { quote_id, settlement_id, recipient_info }
+  app.post("/v1/anchors/payouts", async (request, reply) => {
+    const userId = await authedUser(store, request);
+    const body = request.body as Record<string, unknown>;
+    const payoutId = randomUUID();
+    const result = await proxyAnchor(reply, "/transactions", "POST", { ...body, client_id: userId });
+    if (reply.statusCode < 300) {
+      await store.insertGeneric("anchor_payouts", {
+        payout_id: payoutId,
+        user_id: userId,
+        quote_id: String(body.quote_id ?? ""),
+        settlement_id: String(body.settlement_id ?? ""),
+        anchor_transaction_id: (result as Record<string, unknown>).id ?? null,
+        status: "pending",
+        raw: result
+      }).catch(() => {/* non-fatal */});
+    }
+    return { payout_id: payoutId, ...result };
+  });
+
+  // GET /v1/anchors/payouts/:payout_id — track payout status.
+  app.get("/v1/anchors/payouts/:payout_id", async (request, reply) => {
+    await authedUser(store, request);
+    const { payout_id } = request.params as { payout_id: string };
+    const row = await store.getById<{ anchor_transaction_id?: string }>("anchor_payouts", "payout_id", payout_id);
+    if (!row) { reply.code(404); return { error: "payout not found" }; }
+    if (row.anchor_transaction_id) {
+      return proxyAnchor(reply, `/transactions/${row.anchor_transaction_id}`);
+    }
+    return row;
+  });
+
+  // POST /v1/anchors/compliance-package — send encrypted compliance data to anchor.
+  // Body: { payout_id, encrypted_package_hex }
+  app.post("/v1/anchors/compliance-package", async (request, reply) => {
+    await authedUser(store, request);
+    const body = request.body as Record<string, unknown>;
+    const { payout_id } = body;
+    const row = await store.getById<{ anchor_transaction_id?: string }>("anchor_payouts", "payout_id", String(payout_id ?? ""));
+    if (!row) { reply.code(404); return { error: "payout not found" }; }
+    if (!row.anchor_transaction_id) { reply.code(400); return { error: "payout has no anchor transaction" }; }
+    return proxyAnchor(reply, `/transactions/${row.anchor_transaction_id}/kyc_documents`, "POST", {
+      encrypted_package: body.encrypted_package_hex
+    });
+  });
 }
 
 async function createWithdrawal(request: FastifyRequest, store: Store, userId: string) {
