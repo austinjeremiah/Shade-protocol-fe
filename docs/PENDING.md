@@ -1,12 +1,26 @@
 # Shade Protocol — Pending
 
-## What is done vs pending (summary)
+## Status as of 2026-07-01
 
-All Phase 1 protocol flows (CCTP, ZK proofs, RFQ, CCTP outbound) are complete.
+All Phase 1 protocol flows are proven on real testnets (Arbitrum Sepolia + Stellar Testnet).
 Phase 2 wallet architecture (Privy, note vault, user-signed flows, Next.js UI) is complete.
-MPC committee matching with on-chain settlement is complete as of 2026-06-30.
+MPC committee matching with on-chain settlement is complete.
+
+See [testnet-transactions.md](testnet-transactions.md) for all real on-chain tx hashes.
 
 Remaining work is in three areas: **production hardening**, **new flows**, and **mainnet readiness**.
+
+---
+
+## Recommended Next Priorities
+
+| Priority | Area | Action |
+|---|---|---|
+| 1 | MPC | Fix persistent committee keypairs + real Merkle root in `mpc_settle` (see below) |
+| 2 | CI/CD | Add GitHub Actions — build + test gates on every PR |
+| 3 | SDK | Build `packages/sdk` — CCTP route builder, note manager, intent client |
+| 4 | ZK Circuits | Write `rfq_settlement` + `compliance_membership` circom sources |
+| 5 | Note Recovery | Implement `/v1/notes/recover` + seed-based key derivation |
 
 ---
 
@@ -34,14 +48,6 @@ These circuits are specified in READMEs only. No circom source exists:
 | `proof_of_fill_claim` | Intent hash + fill receipt hash + solver ID + destination tx hash + amount + recipient + deadline + quote hash |
 | `remit_settlement` | Note ownership + nullifier + quote ID hash + payout corridor + amount + policy |
 | **`mpc_settlement`** | **Proves the MPC batch output is consistent with the input note commitments — binds nullifiers + output commitments + batch hash + committee threshold + policy** |
-
----
-
-## CCTP Inbound — Pending User Action
-
-| Item | Status |
-|---|---|
-| `npm run cctp:inbound:e2e` | Wallet `0xE488bb2bd58E9C425F525293856FAA529f7b1db3` needs more Arb Sepolia ETH (~0.0001 ETH) to cover gas. Currently ~0.000037 ETH. Fund from any Arb Sepolia faucet, then re-run. |
 
 ---
 

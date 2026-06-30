@@ -20,12 +20,14 @@
 
 | Contract | Address | Status |
 |---|---|---|
-| ShieldedPool (ShadeVault V2) with `mpc_settle` | `CBKSPJKXV35V4M2RGBMV4UCPMM3QPJYQ5NH4TVW7DTQPIAKG3PINNIDD` | Active — canonical settlement + MPC |
-| ShieldedPool (legacy, pre-MPC) | `CDVEGBVXPIHKHCR7...` | Superseded by MPC-capable deploy |
+| ShieldedPool | `CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ` | Active — canonical settlement, admin = deployer |
 | NullifierRegistry | `CBAKCITRZLJZFQC4ISSYH5UESYFUYBFRANVM5VPDA6OH3VDTSLQ2IH67` | Active — double-spend prevention |
-| ProofVerifier (withdraw/rfq/cctp) | `CCAO4CASJGP57A4S...` | Active — 17-signal shared verifier |
-| ProofVerifier (private transfer) | `CDBCXL3RLJM7SSZ...` | Active — 6-signal verifier |
-| ProofVerifier (deposit note mint) | `CC4FGBVT4BYYM5S3...` | Active |
+| VerifierWithdraw | `CBMRSDKMUKHH3UBHYMMVST2PY4STQS42WRY5IEQJWFW3HEXCHVPHZLUS` | Active — current VK, redeployed 2026-06-30 |
+| VerifierTransfer | `CAZHGOFBYWHRRE2UWDMDWJKFPK6WZ47LAQXCJ7MVAYRCOYNQ5BHD5SAG` | Active — current VK |
+| VerifierDepositNoteMint | `CBURZBYMSG4I4SC56LIRS3I3HBKEZCRDTTD2QEO2LUNK3YETTMW4PE7M` | Active — current VK |
+| CCTP Forwarder | `CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ` | Active |
+| CCTP MessageTransmitter | `CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY` | Active |
+| USDC SAC | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` | Active |
 | ShadeVault (legacy) | `CCUWU6FQOOE3TKZV...` | Deprecated |
 | CommitmentTree (legacy) | `CC32BLTLXCAGDDQ2...` | Deprecated |
 
@@ -111,15 +113,17 @@ Postgres job queue worker with 5 proof job types:
 
 ## Protocol Flows (all proven end-to-end on Stellar Testnet)
 
+Full transaction log: [docs/testnet-transactions.md](testnet-transactions.md)
+
 | Flow | Description | Testnet Tx |
 |---|---|---|
-| CCTP Inbound | Arb Sepolia USDC burn → Circle attestation → Stellar CctpForwarder mint → ShadePool note commitment | ✅ |
-| ZK Withdrawal | Groth16 proof → Soroban verifier → nullifier spent → USDC released to recipient | ✅ |
-| Private Transfer | Input note → ZK proof → output note (hidden amount, no public recipient) | ✅ |
-| Full RFQ (Path A) | Encrypted intent → solver ed25519 quote → Arb USDC fill → settlement proof → on-chain verify + nullifier spend | ✅ |
-| CCTP Outbound | ZK proof-bound Stellar USDC burn → Circle attestation → Arb mint | ✅ |
-| Nullifier double-spend | Enforced on-chain — second spend reverts | ✅ |
-| **MPC Batch Settlement** | **2 crossing intents → Shamir shares → committee match → Ed25519 multi-sig → `mpc_settle` on Soroban → both nullifiers spent atomically** | **✅ `4c3b4ffe...` (2026-06-30)** |
+| CCTP Inbound | Arb Sepolia burn → Circle attestation → Stellar mint_and_forward → ShadePool note | `78e6379d...` (Stellar) |
+| ZK Withdrawal | Groth16 proof (k=3 anonymity set) → nullifier spent → USDC released net of fee | `d3b0224a...` (Stellar) |
+| Private Transfer | Input note → ZK proof → output note (hidden amount, no public recipient) | `72ec7c9d...` (Stellar) |
+| Full RFQ (Path A) | Encrypted intent → solver ed25519 quote → Arb USDC fill → settlement proof → on-chain verify + nullifier spend | `b8f84c20...` (Stellar) / `0x08347ed9...` (Arb) |
+| CCTP Outbound | ZK proof-bound Stellar burn → Circle attestation → Arb mint | `380b2c21...` (Stellar) |
+| Nullifier double-spend | Enforced on-chain — second spend reverts with WasmVm InvalidAction | ✅ all flows |
+| **MPC Batch Settlement** | **2 crossing intents → Shamir shares → committee match → Ed25519 multi-sig → `mpc_settle` on Soroban → both nullifiers spent atomically** | **`4c3b4ffe...` (2026-06-30)** |
 
 ---
 
