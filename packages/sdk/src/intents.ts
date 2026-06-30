@@ -1,6 +1,13 @@
 // IntentClient — submits private RFQ intents to the Shade API and tracks lifecycle.
 // Uses fetch (browser-native). Pass an authToken from Privy for authenticated routes.
 
+export type EncryptedShare = {
+  nodeId: string;
+  ciphertext: string;   // hex
+  nonce: string;        // hex
+  senderPubkey: string; // hex, ephemeral X25519 pubkey
+};
+
 export type IntentParams = {
   inputAsset: string;          // "USDC:Stellar:SAC"
   outputAsset: string;         // "USDC:ArbitrumSepolia"
@@ -11,6 +18,13 @@ export type IntentParams = {
   noteCommitment: string;      // 0x.. Poseidon commitment of the deposited input note
   destination: string;         // EVM address for Path A payout
   policyId?: string;
+
+  // MPC private matching path (optional).
+  // When all four are provided, POST /v1/intents routes to the committee and
+  // POST /v1/rfq/settle will require a confirmed MPC match before settlement.
+  noteNullifier?: string;       // nullifier of the input note (hex)
+  recipientCommitment?: string; // output note commitment for the counterparty (hex)
+  encryptedShares?: EncryptedShare[]; // one Shamir share per committee node
 };
 
 export type QuoteResult = {
@@ -65,8 +79,20 @@ export class IntentClient {
     return res.json() as Promise<T>;
   }
 
-  // Submit a private RFQ intent. Returns intentId + intentHash for subsequent calls.
-  async submit(p: IntentParams): Promise<{ intentId: string; intentHash: string }> {
+  // Submit a private RFQ intent. Returns intentHash + optional mpc_session_id.
+  // When encryptedShares + noteNullifier are provided, the API automatically routes
+  // the intent to the MPC committee for private matching. Settlement then requires
+  // all three: RFQ lifecycle verified + MPC match confirmed + ZK proof valid.
+  async submit(p: IntentParams): Promise<{ intentId: string; intentHash: string; mpc_routed?: boolean; mpc_session_id?: string }> {
+    const mpcFields = p.encryptedShares?.length && p.noteNullifier
+      ? {
+          note_nullifier: p.noteNullifier,
+          note_commitment: p.noteCommitment,
+          recipient_commitment: p.recipientCommitment,
+          encrypted_shares: p.encryptedShares
+        }
+      : {};
+
     return this.post("/v1/intents", {
       intent_type: "PRIVATE_RFQ",
       version: "1.0",
@@ -74,13 +100,15 @@ export class IntentClient {
       input_asset: p.inputAsset,
       output_asset: p.outputAsset,
       amount_mode: p.amountMode,
-      amount: p.amount7dp,
-      min_output: p.minOutput7dp,
+      amount_commitment: p.amount7dp,
+      min_output_commitment: p.minOutput7dp,
       expiry_ledger: p.expiryLedger,
       allowed_solvers_root: "0x" + "00".repeat(32),
       compliance_policy_id: p.policyId ?? "shade:default-testnet-policy:v1",
-      destination: p.destination,
-      replay_domain: "shade:stellar:testnet:rfq:v1"
+      destination_commitment: p.destination,
+      replay_domain: "shade:stellar:testnet:rfq:v1" as const,
+      signature: "0x" + "00".repeat(64), // placeholder — user signs off-chain
+      ...mpcFields
     });
   }
 

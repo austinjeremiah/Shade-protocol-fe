@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+const encryptedShareSchema = z.object({
+  nodeId: z.string().min(1),
+  ciphertext: z.string().min(1),
+  nonce: z.string().min(1),
+  senderPubkey: z.string().min(1)
+});
+
 export const intentSchema = z.object({
   intent_type: z.literal("PRIVATE_RFQ"),
   version: z.literal("1.0"),
@@ -14,7 +21,15 @@ export const intentSchema = z.object({
   compliance_policy_id: z.string().min(1),
   destination_commitment: z.string().min(1),
   replay_domain: z.literal("shade:stellar:testnet:rfq:v1"),
-  signature: z.string().min(1)
+  signature: z.string().min(1),
+
+  // MPC routing fields — all four must be present together to enable the private
+  // matching path. When present: intent is forwarded to the MPC committee, and
+  // POST /v1/rfq/settle requires a confirmed MPC match before settlement.
+  note_nullifier: z.string().min(1).optional(),
+  note_commitment: z.string().min(1).optional(),
+  recipient_commitment: z.string().min(1).optional(),
+  encrypted_shares: z.array(encryptedShareSchema).optional()
 });
 
 export const quoteSchema = z.object({

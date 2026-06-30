@@ -476,7 +476,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   app.get("/v1/withdrawals/:withdrawal_id", async (request) => store.getById("withdrawals", "withdrawal_id", (request.params as { withdrawal_id: string }).withdrawal_id));
 
   app.post("/v1/intents", async (request) => {
-    const userId = await authedUser(store, request); // FIX7/FIX8: auth required, store user_id
+    const userId = await authedUser(store, request);
     const body = intentSchema.parse(request.body);
     const idempotencyKey = idem(request);
     const intentHash = hashJson(body);
@@ -493,7 +493,86 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     });
     await store.transition({ entityType: "intent", entityId: intentHash, toState: "INTENT_CREATED" });
     await store.logActivity(userId, { event_type: "intent.create", entity_type: "intent", entity_id: intentHash });
-    return { intent_hash: intentHash };
+
+    // MPC path: all four fields present → route to private committee matching.
+    // Uses the RFQ intent_hash as the MPC intentId so the two are unified by ID —
+    // no separate lookup column needed. Non-fatal: MPC down ≠ intent creation fails.
+    let mpcSessionId: string | undefined;
+    const hasMpcFields = body.encrypted_shares?.length && body.note_nullifier && body.note_commitment;
+    if (hasMpcFields) {
+      const mpcIntent = {
+        intentId: intentHash,
+        userId,
+        inputAsset: body.input_asset,
+        outputAsset: body.output_asset,
+        expiryLedger: body.expiry_ledger,
+        policyId: body.compliance_policy_id,
+        noteNullifier: body.note_nullifier!,
+        noteCommitment: body.note_commitment!,
+        recipientCommitment: body.recipient_commitment ?? "0x" + "00".repeat(32),
+        encryptedShares: body.encrypted_shares!,
+        submittedAt: Date.now()
+      };
+      try {
+        const resp = await fetch(`${mpcUrl()}/v1/mpc/intents`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ intent: mpcIntent })
+        });
+        const data = await resp.json() as Record<string, unknown>;
+        if (resp.ok) {
+          mpcSessionId = (data.sessionId ?? data.session_id) as string | undefined;
+          if (mpcSessionId) {
+            // Ensure session row exists before inserting mpc_intent (FK).
+            await store.pool.query(
+              `INSERT INTO mpc_sessions (session_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+              [mpcSessionId]
+            );
+          }
+          // mpc_intents.intent_id = rfq intent_hash — unified ID, no extra column.
+          await store.pool.query(
+            `INSERT INTO mpc_intents
+               (intent_id, session_id, user_id, input_asset, output_asset, expiry_ledger,
+                policy_id, note_nullifier, note_commitment, recipient_commitment, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')
+             ON CONFLICT (intent_id) DO UPDATE SET session_id = EXCLUDED.session_id, updated_at = now()`,
+            [
+              intentHash,
+              mpcSessionId ?? "unknown",
+              userId,
+              body.input_asset,
+              body.output_asset,
+              body.expiry_ledger,
+              body.compliance_policy_id,
+              body.note_nullifier,
+              body.note_commitment,
+              body.recipient_commitment ?? ""
+            ]
+          );
+          for (const share of body.encrypted_shares!) {
+            await store.pool.query(
+              `INSERT INTO mpc_intent_shares (intent_id, node_id, ciphertext, nonce, sender_pubkey)
+               VALUES ($1,$2,$3,$4,$5) ON CONFLICT (intent_id, node_id) DO NOTHING`,
+              [intentHash, share.nodeId, share.ciphertext, share.nonce, share.senderPubkey]
+            );
+          }
+          // Record the MPC session link on the intent row.
+          await store.pool.query(
+            `UPDATE intents SET mpc_session_id = $1 WHERE intent_hash = $2`,
+            [mpcSessionId, intentHash]
+          );
+          await store.logActivity(userId, { event_type: "mpc.intent.routed", entity_type: "intent", entity_id: intentHash, metadata: { mpcSessionId } });
+        }
+      } catch (err) {
+        console.warn(`[rfq] MPC routing failed for ${intentHash}: ${err}`);
+      }
+    }
+
+    return {
+      intent_hash: intentHash,
+      mpc_routed: !!mpcSessionId,
+      ...(mpcSessionId ? { mpc_session_id: mpcSessionId } : {})
+    };
   });
   app.get("/v1/intents/:intent_hash", async (request) => store.getById("intents", "intent_hash", (request.params as { intent_hash: string }).intent_hash));
   app.get("/v1/intents/:intent_hash/quotes", async (request) => ({ quotes: await store.listQuotesByIntent((request.params as { intent_hash: string }).intent_hash) }));
@@ -596,6 +675,17 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const proofReady = await store.getById<{ status?: string }>("proof_jobs", "proof_job_id", body.proof_job_id);
     if (!proofReady || proofReady.status !== "ready") reject("proof job is not ready");
     if (await store.isNullifierSpent(body.nullifier)) reject("nullifier already spent");
+
+    // MPC gate: if this intent was routed through the committee, require a confirmed
+    // match before settlement. All three must agree: RFQ lifecycle + MPC match + ZK proof.
+    const intentRow = await store.getById<{ mpc_session_id?: string }>("intents", "intent_hash", body.intent_hash);
+    if (intentRow?.mpc_session_id) {
+      const { rows: matchRows } = await store.pool.query(
+        `SELECT 1 FROM mpc_intents WHERE intent_id = $1 AND status = 'matched'`,
+        [body.intent_hash]
+      );
+      if (matchRows.length === 0) reject("MPC match not yet confirmed — intent is awaiting private committee matching", 409);
+    }
     // solver authorization is enforced on-chain (C4); the API records the lifecycle.
 
     const settlementId = deterministicId({ namespace: "settle", parts: [body.intent_hash, body.quote_id, body.nullifier] });
