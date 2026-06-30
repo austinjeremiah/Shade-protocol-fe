@@ -34,7 +34,7 @@ const CIRCUITS: { name: string; nPublic: number }[] = [
   { name: "withdraw_public",   nPublic: 17 }, // 1 output + 16 public inputs
   { name: "private_transfer",  nPublic: 6  }, // #2 hidden-amount transfer
   { name: "deposit_note_mint", nPublic: 14 }, // 1 output + 13 inputs
-  { name: "proof_of_fill_claim", nPublic: 10 }, // 1 output + 10 public inputs (claimId out + 10 pub inputs)
+  { name: "proof_of_fill_claim", nPublic: 11 }, // 1 output (claimId) + 10 public inputs
   { name: "mpc_settlement",    nPublic: 11 }, // 4 outputs + 7 public inputs
 ];
 
@@ -95,7 +95,7 @@ if (!ptauExists) {
         execFileSync(
           "npx",
           ["--yes", "snarkjs", "zkey", "contribute", zkey0, zkey,
-           "-n", `shade-${c.name}`, "-e", `shade-build-${c.name}-2026`],
+           `-n=shade-${c.name}`, `-e=shade-build-${c.name}-2026`],
           { cwd: dir, env, timeout: 300_000, shell: true }
         );
       }
