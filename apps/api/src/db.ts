@@ -4,7 +4,7 @@ import type { StateTransition } from "@shade/shared-types";
 const { Pool } = pg;
 
 export class Store {
-  private readonly pool: pg.Pool;
+  readonly pool: pg.Pool;
 
   constructor(databaseUrl = process.env.DATABASE_URL ?? "postgres://shade:shade@localhost:5432/shade") {
     if (!databaseUrl) throw new Error("DATABASE_URL is required for persistent state");

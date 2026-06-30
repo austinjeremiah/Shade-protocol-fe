@@ -12,9 +12,10 @@ export async function loadRuntimeEnv(): Promise<EnvMap> {
   if (existsSync(".env.generated")) {
     const generated = await readFile(".env.generated", "utf8");
     for (const line of generated.split("\n")) {
-      if (!line.includes("=") || line.trimStart().startsWith("#")) continue;
-      const index = line.indexOf("=");
-      env[line.slice(0, index)] = line.slice(index + 1);
+      const trimmed = line.replace(/\r$/, "");
+      if (!trimmed.includes("=") || trimmed.trimStart().startsWith("#")) continue;
+      const index = trimmed.indexOf("=");
+      env[trimmed.slice(0, index)] = trimmed.slice(index + 1);
     }
   }
   return env;

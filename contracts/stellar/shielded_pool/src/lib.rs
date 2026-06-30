@@ -73,6 +73,8 @@ pub enum Error {
     WrongCommitment = 21,   // P1.8 commitment arg != commitment bound in deposit proof
     WrongDepositField = 22, // P1.8 a deposit CCTP field arg != value bound in proof
     UnauthorizedSolver = 23,// C4 solver_pubkey is not in the authorized-solver registry
+    MpcThreshold = 24,      // Phase 8: fewer than 2/3 committee signatures verified
+    MpcUnknownSigner = 25,  // Phase 8: a provided signer pubkey is not in the registered committee
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -86,6 +88,7 @@ const CHAINID: Symbol = symbol_short!("chainid"); // #3 domain separator bound i
 const ASSOCROOT: Symbol = symbol_short!("assocroot"); // #4 ASP allowlist root bound in proofs
 const XVERIFIER: Symbol = symbol_short!("xverifier"); // #2 PrivateTransfer verifier (separate circuit/vk)
 const DEPVERIFIER: Symbol = symbol_short!("depverif"); // P1.8 DepositNoteMint verifier (separate circuit/vk)
+const MPC_CMTE: Symbol = symbol_short!("mpc_cmte");   // Phase 8: Vec<BytesN<32>> committee ed25519 pubkeys
 
 #[contracttype]
 enum DataKey {
@@ -638,6 +641,114 @@ impl ShieldedPool {
         env.events().publish(
             (symbol_short!("rfq"), quote_hash),
             (to_solver, nullifier_hash, credit),
+        );
+    }
+
+    // ---- Phase 8: MPC committee settlement ----
+
+    /// Store the committee's ed25519 signing pubkeys on-chain (admin-only).
+    /// Must be called once after deploying the committee before any mpc_settle.
+    /// pubkeys: Vec of 32-byte ed25519 public keys (one per committee node).
+    pub fn set_committee(env: Env, pubkeys: Vec<BytesN<32>>) {
+        Self::require_admin(&env);
+        env.storage().instance().set(&MPC_CMTE, &pubkeys);
+    }
+
+    /// Return the registered committee pubkeys.
+    pub fn get_committee(env: Env) -> Vec<BytesN<32>> {
+        env.storage().instance().get(&MPC_CMTE).unwrap_or(Vec::new(&env))
+    }
+
+    /// Settle one matched pair from a committee-signed batch.
+    ///
+    /// Verification steps:
+    ///   1. Require ≥ ceil(2n/3) valid ed25519 signatures from registered committee nodes.
+    ///   2. Spend nullifier_a and nullifier_b (prevents double-settle / double-withdraw).
+    ///   3. Record the new Merkle root (which now includes output_commitment_a + output_commitment_b).
+    ///   4. Emit a settlement event so off-chain indexers can credit the output notes.
+    ///
+    /// Arguments:
+    ///   nullifier_a / nullifier_b      — domain-separated nullifiers of the two input notes.
+    ///   output_commitment_a / _b       — new note commitments for the two recipients.
+    ///   new_root                       — Merkle root after inserting both output commitments off-chain.
+    ///   batch_hash                     — sha256 of the canonical match JSON the committee signed.
+    ///   signer_pubkeys / signatures    — parallel vecs; each must be a registered committee member.
+    pub fn mpc_settle(
+        env: Env,
+        nullifier_a: BytesN<32>,
+        nullifier_b: BytesN<32>,
+        output_commitment_a: BytesN<32>,
+        output_commitment_b: BytesN<32>,
+        new_root: BytesN<32>,
+        batch_hash: BytesN<32>,
+        signer_pubkeys: Vec<BytesN<32>>,
+        signatures: Vec<BytesN<64>>,
+    ) {
+        Self::require_not_paused(&env);
+
+        // Load registered committee from contract storage.
+        let committee: Vec<BytesN<32>> = env.storage().instance()
+            .get(&MPC_CMTE)
+            .unwrap_or_else(|| panic_err(&env, Error::NotInitialized));
+        if committee.len() == 0 {
+            panic_err(&env, Error::NotInitialized);
+        }
+
+        // Threshold = ceil(2n/3).
+        let n = committee.len() as u32;
+        let threshold = (n * 2 + 2) / 3;
+
+        if signer_pubkeys.len() < threshold || signatures.len() < threshold {
+            panic_err(&env, Error::MpcThreshold);
+        }
+
+        // Verify each provided signature against the registered committee set.
+        // ed25519_verify panics if the signature is invalid, aborting the whole tx.
+        let msg = Bytes::from_array(&env, &batch_hash.to_array());
+        let mut verified: u32 = 0;
+        for i in 0..signer_pubkeys.len() {
+            let pk: BytesN<32> = signer_pubkeys.get(i).unwrap();
+            // Check pk is in the registered committee (linear scan; n ≤ 10 in practice).
+            let mut registered = false;
+            for j in 0..committee.len() {
+                if committee.get(j).unwrap() == pk {
+                    registered = true;
+                    break;
+                }
+            }
+            if !registered {
+                panic_err(&env, Error::MpcUnknownSigner);
+            }
+            let sig: BytesN<64> = signatures.get(i).unwrap();
+            env.crypto().ed25519_verify(&pk, &msg, &sig);
+            verified += 1;
+        }
+
+        if verified < threshold {
+            panic_err(&env, Error::MpcThreshold);
+        }
+
+        // Spend both nullifiers atomically.  NullifierRegistry.spend panics if already used.
+        let nullreg: Address = env.storage().instance().get(&NULLREG).unwrap();
+        let _: bool = env.invoke_contract(
+            &nullreg,
+            &Symbol::new(&env, "spend"),
+            vec![&env, env.current_contract_address().to_val(), nullifier_a.clone().to_val()],
+        );
+        let _: bool = env.invoke_contract(
+            &nullreg,
+            &Symbol::new(&env, "spend"),
+            vec![&env, env.current_contract_address().to_val(), nullifier_b.clone().to_val()],
+        );
+
+        // Record the new Merkle root (includes both output commitments inserted off-chain).
+        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
+        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
+
+        // Emit event so indexers credit the two output notes to recipients.
+        env.events().publish(
+            (symbol_short!("mpc"), batch_hash),
+            (nullifier_a, nullifier_b, output_commitment_a, output_commitment_b, new_root),
         );
     }
 

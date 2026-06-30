@@ -1,7 +1,12 @@
 # RFQSettlement Circuit
 
-Status: specified, not yet compiled.
+Status: **implemented** — embedded in `circuits/withdraw_public/main.circom`.
 
-Must bind input note ownership, nullifier, accepted quote hash, intent hash, solver ID, quote expiry, fill constraints, output commitment or public payout, fee, policy, pool, and chain.
+The `withdraw_public` circuit handles RFQ settlement via `operationType = RFQ_SETTLE` and the following public signals:
+- `quoteHash` [10] — `int(sha256(quote)[:31])`; the pool enforces `arg.quote_hash == proof.quoteHash`
+- `intentHash` [11] — `int(sha256(intent)[:31])`; the pool enforces `arg.intent_hash == proof.intentHash`
+- `fillReceiptHash` [12] — `int(sha256(fill_tx)[:31])`; binds the real on-chain fill transaction
 
-Solver signature may be verified in the Soroban contract if in-circuit signature verification is too expensive; in that design the verified `quote_hash` is public input bound to the proof.
+Solver signature verification is handled in the Soroban contract (off-circuit), which matches the design note. The quote hash is bound into the ZK proof, so the solver cannot forge a quote.
+
+No separate `rfq_settlement.circom` is needed.

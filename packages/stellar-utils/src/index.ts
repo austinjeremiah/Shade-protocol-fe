@@ -1,5 +1,6 @@
 import { Horizon, Keypair, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from "@stellar/stellar-sdk";
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 
 export const TESTNET = {
   rpcUrl: "https://soroban-testnet.stellar.org",
@@ -59,11 +60,20 @@ export function sorobanInvoke(opts: {
 }): SorobanInvokeResult {
   const rpcUrl = opts.rpcUrl ?? TESTNET.rpcUrl;
   const passphrase = opts.passphrase ?? TESTNET.passphrase;
+  const cargoPath = (() => {
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+    const cargo = home ? join(home, ".cargo", "bin") : "";
+    const sep = process.platform === "win32" ? ";" : ":";
+    return [cargo, process.env.PATH ?? ""].filter(Boolean).join(sep);
+  })();
+
   const args = [
     "contract",
     "invoke",
     "--id",
     opts.contractId,
+    "--source-account",
+    opts.secret,
     "--rpc-url",
     rpcUrl,
     "--network-passphrase",
@@ -78,11 +88,7 @@ export function sorobanInvoke(opts: {
     const result = spawnSync("stellar", args, {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
-      env: {
-        ...process.env,
-        STELLAR_ACCOUNT: opts.secret,
-        PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH ?? ""}`
-      }
+      env: { ...process.env, PATH: cargoPath }
     });
     const raw = `${result.stderr ?? ""}\n${result.stdout ?? ""}`;
     if (result.status === 0) {

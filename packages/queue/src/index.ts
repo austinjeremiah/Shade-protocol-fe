@@ -31,6 +31,14 @@ export class JobQueue {
     await this.pool.end();
   }
 
+  // Allow workers to run auxiliary queries (e.g. fetching batch data for MPC settlement).
+  async query<T extends pg.QueryResultRow = pg.QueryResultRow>(
+    sql: string,
+    params?: unknown[]
+  ): Promise<pg.QueryResult<T>> {
+    return this.pool.query<T>(sql, params);
+  }
+
   // Enqueue a job. If idempotencyKey is supplied and a job already exists for it,
   // the existing job is returned (no duplicate work).
   async enqueue(queue: QueueName, jobType: string, payload: Record<string, unknown>, idempotencyKey?: string): Promise<ServiceJob> {

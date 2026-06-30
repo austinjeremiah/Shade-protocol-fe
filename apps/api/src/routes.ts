@@ -666,6 +666,191 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.generated.md" }));
+
+  // ---- MPC committee routes ----
+  // These proxy to the MPC committee service (MPC_COMMITTEE_URL) and persist
+  // metadata to the mpc_* tables for audit and status tracking.
+  const mpcUrl = () => process.env.MPC_COMMITTEE_URL ?? "http://localhost:8090";
+
+  // Committee public keys — used by clients to encrypt intent amount shares.
+  app.get("/v1/mpc/committee", async (_, reply) => {
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/committee`);
+      if (!resp.ok) { reply.code(502); return { error: "committee unavailable" }; }
+      return resp.json();
+    } catch {
+      reply.code(503);
+      return { error: "MPC_COMMITTEE_URL not reachable — is mpc:dev running?" };
+    }
+  });
+
+  // Submit an MPC intent (amount is secret-shared; only public metadata in DB).
+  app.post("/v1/mpc/intents", async (request, reply) => {
+    const body = request.body as Record<string, unknown>;
+    const intentId = (body.intentId ?? body.intent_id) as string | undefined;
+    if (!intentId) { reply.code(400); return { error: "intentId required" }; }
+    const userId = await optionalUser(store, request);
+
+    // 1. Forward to the committee coordinator first to get the session assignment.
+    let data: Record<string, unknown>;
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/intents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intent: body })
+      });
+      data = await resp.json() as Record<string, unknown>;
+      if (!resp.ok) { reply.code(502); return data; }
+    } catch {
+      reply.code(503);
+      return { error: "MPC committee unreachable" };
+    }
+
+    const sessionId = (data.sessionId ?? data.session_id) as string | undefined;
+    if (sessionId) {
+      // Ensure the session row exists before inserting the intent (FK constraint).
+      await store.pool.query(
+        `INSERT INTO mpc_sessions (session_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+        [sessionId]
+      );
+    }
+
+    // 2. Persist public metadata with the correct session_id from the committee.
+    // Amount is NOT stored here — it lives only in the encrypted committee shares.
+    await store.pool.query(
+      `INSERT INTO mpc_intents
+         (intent_id, session_id, user_id, input_asset, output_asset, expiry_ledger,
+          policy_id, note_nullifier, note_commitment, recipient_commitment, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')
+       ON CONFLICT (intent_id) DO UPDATE SET session_id = EXCLUDED.session_id, updated_at = now()`,
+      [
+        intentId,
+        sessionId ?? "unknown",
+        userId ?? null,
+        body.inputAsset ?? body.input_asset,
+        body.outputAsset ?? body.output_asset,
+        body.expiryLedger ?? body.expiry_ledger ?? 0,
+        body.policyId ?? body.policy_id ?? "default",
+        body.noteNullifier ?? body.note_nullifier ?? "",
+        body.noteCommitment ?? body.note_commitment ?? "",
+        body.recipientCommitment ?? body.recipient_commitment ?? ""
+      ]
+    );
+
+    // 3. Persist encrypted shares for audit (amount remains encrypted — only ciphertext stored).
+    const encryptedShares = (body.encryptedShares ?? []) as Array<{ nodeId: string; ciphertext: string; nonce: string; senderPubkey: string }>;
+    for (const share of encryptedShares) {
+      await store.pool.query(
+        `INSERT INTO mpc_intent_shares (intent_id, node_id, ciphertext, nonce, sender_pubkey)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (intent_id, node_id) DO NOTHING`,
+        [intentId, share.nodeId, share.ciphertext, share.nonce, share.senderPubkey]
+      );
+    }
+
+    if (userId) await store.logActivity(userId, { event_type: "mpc.intent.submit", entity_type: "mpc_intent", entity_id: intentId });
+    return data;
+  });
+
+  // MPC intent status.
+  app.get("/v1/mpc/intents/:intent_id", async (request, reply) => {
+    const { intent_id } = request.params as { intent_id: string };
+    const { rows } = await store.pool.query("SELECT * FROM mpc_intents WHERE intent_id=$1", [intent_id]);
+    if (!rows[0]) { reply.code(404); return { error: "intent not found" }; }
+    return rows[0];
+  });
+
+  // Session status (proxied to committee + local DB).
+  app.get("/v1/mpc/sessions/:session_id", async (request, reply) => {
+    const { session_id } = request.params as { session_id: string };
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/sessions/${session_id}`);
+      if (!resp.ok) { reply.code(resp.status); return resp.json(); }
+      return resp.json();
+    } catch {
+      reply.code(503);
+      return { error: "MPC committee unreachable" };
+    }
+  });
+
+  // Manually trigger a matching round for a session (dev/demo endpoint).
+  app.post("/v1/mpc/sessions/:session_id/match", async (request, reply) => {
+    const { session_id } = request.params as { session_id: string };
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/sessions/${session_id}/match`, { method: "POST" });
+      const data = await resp.json() as Record<string, unknown>;
+      if (!resp.ok) { reply.code(502); return data; }
+
+      // Persist the signed batch if matching succeeded.
+      if (data.ok && data.batch) {
+        const batch = data.batch as Record<string, unknown>;
+        const matches = batch.matches as unknown[];
+        const sigs = batch.signatures as Array<{ nodeId: string; signingPubkey: string; signature: string }>;
+
+        await store.pool.query(
+          `INSERT INTO mpc_batches (batch_id, session_id, batch_hash, match_count, matches_json, signatures_json)
+           VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+          [batch.batchId, session_id, batch.batchHash, matches.length, JSON.stringify(matches), JSON.stringify(sigs)]
+        );
+
+        // Denormalized per-node signature rows.
+        for (const sig of sigs) {
+          await store.pool.query(
+            `INSERT INTO mpc_batch_signatures (batch_id, node_id, signing_pubkey, signature)
+             VALUES ($1,$2,$3,$4) ON CONFLICT (batch_id, node_id) DO NOTHING`,
+            [batch.batchId, sig.nodeId, sig.signingPubkey, sig.signature]
+          );
+        }
+
+        // Update mpc_sessions and matched intent rows.
+        await store.pool.query(
+          "UPDATE mpc_sessions SET status='signed', match_count=$1, closed_at=now(), updated_at=now() WHERE session_id=$2",
+          [matches.length, session_id]
+        );
+        for (const m of matches as Array<{ intentAId: string; intentBId: string; matchedAmount7dp: string }>) {
+          await store.pool.query(
+            "UPDATE mpc_intents SET status='matched', matched_with=$2, matched_amount_7dp=$3, updated_at=now() WHERE intent_id=$1",
+            [m.intentAId, m.intentBId, m.matchedAmount7dp]
+          );
+          await store.pool.query(
+            "UPDATE mpc_intents SET status='matched', matched_with=$2, matched_amount_7dp=$3, updated_at=now() WHERE intent_id=$1",
+            [m.intentBId, m.intentAId, m.matchedAmount7dp]
+          );
+        }
+      }
+      return data;
+    } catch {
+      reply.code(503);
+      return { error: "MPC committee unreachable" };
+    }
+  });
+
+  // All completed signed batches.
+  app.get("/v1/mpc/batches", async (_, reply) => {
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/batches`);
+      if (!resp.ok) { reply.code(502); return { error: "committee unavailable" }; }
+      return resp.json();
+    } catch {
+      reply.code(503);
+      return { error: "MPC committee unreachable" };
+    }
+  });
+
+  // Verify a signed batch (checks all committee node signatures).
+  app.post("/v1/mpc/batches/verify", async (request, reply) => {
+    try {
+      const resp = await fetch(`${mpcUrl()}/v1/mpc/verify`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request.body)
+      });
+      if (!resp.ok) { reply.code(502); return { error: "committee unavailable" }; }
+      return resp.json();
+    } catch {
+      reply.code(503);
+      return { error: "MPC committee unreachable" };
+    }
+  });
 }
 
 async function createWithdrawal(request: FastifyRequest, store: Store, userId: string) {
