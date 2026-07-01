@@ -1,10 +1,12 @@
 # Shade Protocol — Testnet Transaction Log
 
-End-to-end testnet run completed **2026-06-30**.  
+E2E testnet runs: **2026-06-30** (Phases 1–5) · **2026-07-01** (Phase 6: MPC+RFQ)  
 Networks: **Arbitrum Sepolia** + **Stellar Testnet**  
-Git commit: `3bb32d1`
+Latest git commit: `3506689`
 
-Pool: `CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ`
+Pool (2026-06-30): `CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ`  
+Pool (2026-07-01, with ZK enforcement): `CDX2H5E4WIQY6QRBRHWOEXYTYOM2J2OFEKQWHKXKL4ASNHJNPI2MXKKJ`  
+MPC Verifier: `CCOXS44BQHBDO6NHCUUY3TBVSHVHZB2NKEWCZWQIKBHKLN4YQAEVJUD6`
 
 ---
 
@@ -84,11 +86,61 @@ User proves note ownership with destination/fee/threshold bound into the Groth16
 
 ---
 
+---
+
+## 6. MPC + RFQ Integration — private committee matching + ZK-enforced settlement
+
+Date: **2026-07-01**  
+Git commits: `36d9a0b` (Phase C: witness builder + relayer), `6525031` (verifier deploy + pool upgrade)
+
+### 6a. Infrastructure deployment (Stellar Testnet)
+
+New pool wasm includes: `upgrade()` admin entrypoint, `set_mpc_verifier()`, and updated `mpc_settle()` that requires a Groth16 BLS12-381 proof alongside committee Ed25519 signatures.
+
+| Step | Chain | Transaction |
+|------|-------|-------------|
+| Upload `proof_verifiers.wasm` (mpc_settlement VK) | Stellar Testnet | [`1831c0878e45576d615e9cc4f1a5be977d5195430eb1061cec3a634590a5a281`](https://stellar.expert/explorer/testnet/tx/1831c0878e45576d615e9cc4f1a5be977d5195430eb1061cec3a634590a5a281) |
+| Deploy MPC verifier contract → `CCOXS44B…` | Stellar Testnet | [`ba045e2ce0b2cf4d936c52548c1e33d8ab780adce53b07b4ca24733d7d53c689`](https://stellar.expert/explorer/testnet/tx/ba045e2ce0b2cf4d936c52548c1e33d8ab780adce53b07b4ca24733d7d53c689) |
+| Upload new `shielded_pool.wasm` | Stellar Testnet | [`06c52ea9db50d51257cc3b08d077f64f6e386fdb566d960c4e0a8c789b01bb4f`](https://stellar.expert/explorer/testnet/tx/06c52ea9db50d51257cc3b08d077f64f6e386fdb566d960c4e0a8c789b01bb4f) |
+| Deploy new ShieldedPool → `CDX2H5E4…` | Stellar Testnet | [`13a379063854369b53b24df4615ef5be426acc6edc84d4c8bd99fffddc197c28`](https://stellar.expert/explorer/testnet/tx/13a379063854369b53b24df4615ef5be426acc6edc84d4c8bd99fffddc197c28) |
+| `nullreg.set_authorized_spender(pool)` | Stellar Testnet | [`e99d4a63f468ccdac07701a35f63a1a5a4b706120d61d32f3626120f9e634102`](https://stellar.expert/explorer/testnet/tx/e99d4a63f468ccdac07701a35f63a1a5a4b706120d61d32f3626120f9e634102) |
+| `pool.set_cctp_messenger(TMM)` | Stellar Testnet | [`d8ef3767a14c484c27b207158a7f9f386bdd196fa15084bd0c96eaa7887bc7e1`](https://stellar.expert/explorer/testnet/tx/d8ef3767a14c484c27b207158a7f9f386bdd196fa15084bd0c96eaa7887bc7e1) |
+| `pool.set_transfer_verifier(V)` | Stellar Testnet | [`ef63d286a784686d224676fdc710b89de488adc0071e3e402abb5ae7148cc072`](https://stellar.expert/explorer/testnet/tx/ef63d286a784686d224676fdc710b89de488adc0071e3e402abb5ae7148cc072) |
+| `pool.set_deposit_verifier(V)` | Stellar Testnet | [`c704871f7ae20d3403a1c35e15ca8d915c83b2b8572cee57c1c862fe51ed32ba`](https://stellar.expert/explorer/testnet/tx/c704871f7ae20d3403a1c35e15ca8d915c83b2b8572cee57c1c862fe51ed32ba) |
+| `pool.set_mpc_verifier(CCOXS44B…)` — ZK proof enforcement live | Stellar Testnet | [`3a7512100fbde55545870216fc940c04ba7647b385aa79aa4ec470a554f6d432`](https://stellar.expert/explorer/testnet/tx/3a7512100fbde55545870216fc940c04ba7647b385aa79aa4ec470a554f6d432) |
+
+### 6b. MPC private matching session
+
+3-of-3 committee ran locally (ephemeral keys); amounts Shamir 2-of-3 secret-shared and X25519-encrypted to each node — no single node sees the matched amount.
+
+| Field | Value |
+|-------|-------|
+| Session | `session-1782889751449` |
+| Intent A | `e57ed8d5-c23f-4a13-baca-38acd7bd8523` — sell 500 USDC:Stellar for XLM:Stellar |
+| Intent B | `c21400ce-46d9-45fb-a410-8b2d97b7e641` — sell 500 XLM:Stellar for USDC:Stellar |
+| Matched amount | `50,000,000` (7dp) = 500 USDC |
+| Batch ID | `e6efb7aa-3894-4a09-bf32-6f03a5d6c0f5` |
+| batchHash (SHA-256) | `43a9ab0a2e6868dcca9eea936add388035c5fc91caf95eb33c9b3eef5a48bb01` |
+| Committee signatures | 3 of 3 nodes signed; `verifySignedBatch()` → PASS (local + server) |
+
+### 6c. Settlement gate
+
+On-chain `mpc_settle()` now requires both:
+1. **Committee multi-sig**: Ed25519 signatures from ≥ 2-of-3 nodes over `batchHash`
+2. **Groth16 proof** (BLS12-381, `mpc_settlement` circuit): proves both input notes are genuine Merkle leaves, ASP-compliant labels, domain-separated nullifiers, output commitments, and value conservation — verified by `CCOXS44B…`
+
+The ZK relayer path (Phase C) generates the proof automatically when `circuits/mpc_settlement/build/` artifacts are present. Without the proof, `mpc_settle()` reverts with `MpcProofInvalid` (#26).
+
+---
+
 ## Contract addresses (Stellar Testnet)
+
+### Active (2026-07-01)
 
 | Contract | Address |
 |----------|---------|
-| ShieldedPool | `CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ` |
+| ShieldedPool | [`CDX2H5E4WIQY6QRBRHWOEXYTYOM2J2OFEKQWHKXKL4ASNHJNPI2MXKKJ`](https://stellar.expert/explorer/testnet/contract/CDX2H5E4WIQY6QRBRHWOEXYTYOM2J2OFEKQWHKXKL4ASNHJNPI2MXKKJ) |
+| MPC Verifier (mpc_settlement BLS12-381) | [`CCOXS44BQHBDO6NHCUUY3TBVSHVHZB2NKEWCZWQIKBHKLN4YQAEVJUD6`](https://stellar.expert/explorer/testnet/contract/CCOXS44BQHBDO6NHCUUY3TBVSHVHZB2NKEWCZWQIKBHKLN4YQAEVJUD6) |
 | NullifierRegistry | `CBAKCITRZLJZFQC4ISSYH5UESYFUYBFRANVM5VPDA6OH3VDTSLQ2IH67` |
 | VerifierWithdraw | `CBMRSDKMUKHH3UBHYMMVST2PY4STQS42WRY5IEQJWFW3HEXCHVPHZLUS` |
 | VerifierTransfer | `CAZHGOFBYWHRRE2UWDMDWJKFPK6WZ47LAQXCJ7MVAYRCOYNQ5BHD5SAG` |
@@ -96,3 +148,9 @@ User proves note ownership with destination/fee/threshold bound into the Groth16
 | CCTP Forwarder | `CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ` |
 | CCTP MessageTransmitter | `CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY` |
 | USDC SAC | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
+
+### Superseded (2026-06-30)
+
+| Contract | Address |
+|----------|---------|
+| ShieldedPool (pre-ZK, no upgrade fn) | `CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ` |
