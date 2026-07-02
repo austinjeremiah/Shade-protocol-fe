@@ -1,8 +1,19 @@
 diff --git a/privacy-pools/cli/coinutils/src/cli/args.rs b/privacy-pools/cli/coinutils/src/cli/args.rs
-index 440aa84..820e18a 100644
+index 440aa84..9b54353 100644
 --- a/privacy-pools/cli/coinutils/src/cli/args.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/args.rs
-@@ -30,6 +30,39 @@ pub enum Commands {
+@@ -18,6 +18,10 @@ pub enum Commands {
+         /// Output file path
+         #[arg(short, long, default_value = "coin.json")]
+         output: String,
++        /// Asset id (decimal field element) bound into the commitment (Phase 2).
++        /// Required — an asset-less note is rejected (fail closed).
++        #[arg(long)]
++        asset_id: String,
+     },
+     /// Withdraw a coin
+     Withdraw {
+@@ -30,6 +34,39 @@ pub enum Commands {
          /// Output file path
          #[arg(short, long, default_value = "withdrawal.json")]
          output: String,
@@ -42,7 +53,7 @@ index 440aa84..820e18a 100644
      },
      /// Update association set
      UpdateAssociation {
-@@ -38,6 +71,34 @@ pub enum Commands {
+@@ -38,6 +75,34 @@ pub enum Commands {
          /// Label to add
          label: String,
      },
@@ -78,10 +89,29 @@ index 440aa84..820e18a 100644
  
  impl Cli {
 diff --git a/privacy-pools/cli/coinutils/src/cli/commands.rs b/privacy-pools/cli/coinutils/src/cli/commands.rs
-index 92bf7f3..5ead3c8 100644
+index 92bf7f3..ae82d72 100644
 --- a/privacy-pools/cli/coinutils/src/cli/commands.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/commands.rs
-@@ -57,12 +57,24 @@ impl CommandHandler {
+@@ -27,14 +27,16 @@ impl CommandHandler {
+     }
+ 
+     /// Handle the generate command
+-    pub fn handle_generate(&self, scope: String, output: String) -> Result<()> {
++    pub fn handle_generate(&self, scope: String, output: String, asset_id: String) -> Result<()> {
+         info!("Generating coin with scope: {}", scope);
+         debug!("Output file: {}", output);
+ 
+         let env = Env::default();
+         env.cost_estimate().budget().reset_unlimited();
+ 
+-        let generated_coin = generate_coin(&env, scope.as_bytes());
++        // Phase 2: bind the asset id into the commitment.
++        let asset_id_fr = crate::crypto::conversions::decimal_string_to_bls_scalar(&env, &asset_id)?;
++        let generated_coin = generate_coin(&env, scope.as_bytes(), asset_id_fr);
+         debug!(
+             "Generated coin commitment: {}",
+             generated_coin.commitment_hex
+@@ -57,12 +59,24 @@ impl CommandHandler {
      }
  
      /// Handle the withdraw command
@@ -106,7 +136,7 @@ index 92bf7f3..5ead3c8 100644
      ) -> Result<()> {
          info!("Processing withdrawal for coin: {}", coin_file);
          debug!("State file: {}", state_file);
-@@ -86,12 +98,26 @@ impl CommandHandler {
+@@ -86,12 +100,26 @@ impl CommandHandler {
          };
  
          // Generate withdrawal
@@ -134,7 +164,7 @@ index 92bf7f3..5ead3c8 100644
  
          // Save withdrawal data
          let withdrawal_json = self
-@@ -125,6 +151,57 @@ impl CommandHandler {
+@@ -125,6 +153,57 @@ impl CommandHandler {
          println!("Association set updated successfully");
          Ok(())
      }
@@ -209,11 +239,112 @@ index 2aff16c..2c76d4a 100644
 +// configured pool_id / chain_id. nullifierHash = Poseidon(nullifier, pool_id, chain_id).
 +pub const POOL_ID: &str = "1"; // Shade shielded pool v1
 +pub const CHAIN_ID: &str = "148"; // Stellar (SLIP-44 coin type), testnet domain marker
+diff --git a/privacy-pools/cli/coinutils/src/crypto/coin.rs b/privacy-pools/cli/coinutils/src/crypto/coin.rs
+index 45ad905..3e3a566 100644
+--- a/privacy-pools/cli/coinutils/src/crypto/coin.rs
++++ b/privacy-pools/cli/coinutils/src/crypto/coin.rs
+@@ -29,20 +29,32 @@ pub fn generate_label(env: &Env, scope: &[u8], nonce: &[u8; 32]) -> BlsScalar {
+     poseidon_hash(env, &[scope_fr, nonce_fr])
+ }
+ 
+-/// Generate a commitment for a coin
++/// Generate a commitment for a coin.
++///
++/// Phase 2 (spec §6.3): the commitment is asset-bound —
++///   precommitment = Poseidon(nullifier, secret)
++///   assetValueLabel = Poseidon(assetId, value, label)
++///   commitment    = Poseidon(assetValueLabel, precommitment)
++/// so a USDC note and an XLM note are distinct at the proof layer. This uses only
++/// 2- and 3-input Poseidon (native soroban-poseidon t=3/t=4), the widths already
++/// verified byte-identical to the circom Poseidon255 — no unproven t=5.
+ pub fn generate_commitment(
+     env: &Env,
++    asset_id: BlsScalar,
+     value: BlsScalar,
+     label: BlsScalar,
+     nullifier: BlsScalar,
+     secret: BlsScalar,
+ ) -> BlsScalar {
+     let precommitment = poseidon_hash(env, &[nullifier, secret]);
+-    poseidon_hash(env, &[value, label, precommitment])
++    let asset_value_label = poseidon_hash(env, &[asset_id, value, label]);
++    poseidon_hash(env, &[asset_value_label, precommitment])
+ }
+ 
+-/// Generate a complete coin with all necessary components
+-pub fn generate_coin(env: &Env, scope: &[u8]) -> GeneratedCoin {
++/// Generate a complete coin with all necessary components. `asset_id` is the
++/// field-element id of the note's asset (Phase 2); it is bound into the
++/// commitment and recorded in the coin so spend proofs can prove the asset.
++pub fn generate_coin(env: &Env, scope: &[u8], asset_id: BlsScalar) -> GeneratedCoin {
+     use crate::crypto::conversions::bls_scalar_to_decimal_string;
+ 
+     let value = BlsScalar::from_u256(U256::from_u32(env, COIN_VALUE as u32));
+@@ -52,6 +64,7 @@ pub fn generate_coin(env: &Env, scope: &[u8]) -> GeneratedCoin {
+     let label = generate_label(env, scope, &nonce);
+     let commitment = generate_commitment(
+         env,
++        asset_id.clone(),
+         value.clone(),
+         label.clone(),
+         nullifier.clone(),
+@@ -63,6 +76,7 @@ pub fn generate_coin(env: &Env, scope: &[u8]) -> GeneratedCoin {
+     let secret_decimal = bls_scalar_to_decimal_string(&secret);
+     let label_decimal = bls_scalar_to_decimal_string(&label);
+     let commitment_decimal = bls_scalar_to_decimal_string(&commitment);
++    let asset_id_decimal = bls_scalar_to_decimal_string(&asset_id);
+ 
+     let coin_data = CoinData {
+         value: value_decimal,
+@@ -70,6 +84,7 @@ pub fn generate_coin(env: &Env, scope: &[u8]) -> GeneratedCoin {
+         secret: secret_decimal,
+         label: label_decimal,
+         commitment: commitment_decimal,
++        asset_id: asset_id_decimal,
+     };
+ 
+     GeneratedCoin {
+@@ -95,12 +110,13 @@ mod tests {
+     #[test]
+     fn test_generate_commitment() {
+         let env = Env::default();
++        let asset_id = BlsScalar::from_u256(U256::from_u32(&env, 50));
+         let value = BlsScalar::from_u256(U256::from_u32(&env, 100));
+         let label = BlsScalar::from_u256(U256::from_u32(&env, 200));
+         let nullifier = BlsScalar::from_u256(U256::from_u32(&env, 300));
+         let secret = BlsScalar::from_u256(U256::from_u32(&env, 400));
+ 
+-        let result = generate_commitment(&env, value, label, nullifier, secret);
++        let result = generate_commitment(&env, asset_id, value, label, nullifier, secret);
+         // Just verify it doesn't panic and returns a valid scalar
+         assert!(result.to_bytes().to_array().iter().any(|&x| x != 0));
+     }
+@@ -109,10 +125,12 @@ mod tests {
+     fn test_generate_coin() {
+         let env = Env::default();
+         let scope = b"test_scope";
+-        let result = generate_coin(&env, scope);
++        let asset_id = BlsScalar::from_u256(U256::from_u32(&env, 42));
++        let result = generate_coin(&env, scope, asset_id);
+ 
+         // Verify the coin has all required fields
+         assert!(!result.coin.value.is_empty());
++        assert!(!result.coin.asset_id.is_empty());
+         assert!(!result.coin.nullifier.is_empty());
+         assert!(!result.coin.secret.is_empty());
+         assert!(!result.coin.label.is_empty());
 diff --git a/privacy-pools/cli/coinutils/src/main.rs b/privacy-pools/cli/coinutils/src/main.rs
-index c920f69..2d6222c 100644
+index c920f69..ecf1060 100644
 --- a/privacy-pools/cli/coinutils/src/main.rs
 +++ b/privacy-pools/cli/coinutils/src/main.rs
-@@ -17,11 +17,48 @@ fn main() {
+@@ -11,17 +11,54 @@ fn main() {
+     let command_handler = CommandHandler::new();
+ 
+     let result = match cli.command {
+-        Commands::Generate { scope, output } => command_handler.handle_generate(scope, output),
++        Commands::Generate { scope, output, asset_id } => command_handler.handle_generate(scope, output, asset_id),
+         Commands::Withdraw {
+             coin_file,
              state_file,
              association_file,
              output,
@@ -276,10 +407,32 @@ index d0c5252..552a253 100644
 +pub use transfer::*;
  pub use withdrawal::*;
 diff --git a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-index f112d23..ef92ee6 100644
+index f112d23..3db1625 100644
 --- a/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
 +++ b/privacy-pools/cli/coinutils/src/merkle/withdrawal.rs
-@@ -110,9 +110,41 @@ impl WithdrawalManager {
+@@ -28,10 +28,13 @@ impl WithdrawalManager {
+         let nullifier = decimal_string_to_bls_scalar(env, &coin.nullifier)?;
+         let secret = decimal_string_to_bls_scalar(env, &coin.secret)?;
+         let label = decimal_string_to_bls_scalar(env, &coin.label)?;
++        // Phase 2: the note's asset id is bound into the commitment.
++        let asset_id = decimal_string_to_bls_scalar(env, &coin.asset_id)?;
+ 
+         // Reconstruct the commitment to verify it matches
+         let commitment = generate_commitment(
+             env,
++            asset_id.clone(),
+             value.clone(),
+             label.clone(),
+             nullifier.clone(),
+@@ -97,6 +100,7 @@ impl WithdrawalManager {
+ 
+         Ok(SnarkInput {
+             withdrawn_value: crate::config::COIN_VALUE.to_string(),
++            asset_id: coin.asset_id.clone(),
+             label: label_decimal,
+             value: value_decimal,
+             nullifier: nullifier_decimal,
+@@ -110,9 +114,41 @@ impl WithdrawalManager {
              association_root,
              label_index,
              label_siblings,
@@ -321,11 +474,36 @@ index f112d23..ef92ee6 100644
      /// Handle association set processing for withdrawal
      fn handle_association_set(
          &self,
+diff --git a/privacy-pools/cli/coinutils/src/types/coin.rs b/privacy-pools/cli/coinutils/src/types/coin.rs
+index 6d4c203..e2f1010 100644
+--- a/privacy-pools/cli/coinutils/src/types/coin.rs
++++ b/privacy-pools/cli/coinutils/src/types/coin.rs
+@@ -7,6 +7,10 @@ pub struct CoinData {
+     pub secret: String,
+     pub label: String,
+     pub commitment: String,
++    // Phase 2: field-element asset id bound into the commitment
++    // (commitment = Poseidon(assetId, value, label, Poseidon(nullifier, secret))).
++    #[serde(default)]
++    pub asset_id: String,
+ }
+ 
+ #[derive(Serialize, Deserialize)]
 diff --git a/privacy-pools/cli/coinutils/src/types/snark.rs b/privacy-pools/cli/coinutils/src/types/snark.rs
-index eeba96a..bf58d66 100644
+index eeba96a..f5ccf8d 100644
 --- a/privacy-pools/cli/coinutils/src/types/snark.rs
 +++ b/privacy-pools/cli/coinutils/src/types/snark.rs
-@@ -20,4 +20,34 @@ pub struct SnarkInput {
+@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
+ pub struct SnarkInput {
+     #[serde(rename = "withdrawnValue")]
+     pub withdrawn_value: String,
++    // Phase 2: asset id bound into the commitment; also a public signal.
++    #[serde(rename = "assetId")]
++    pub asset_id: String,
+     pub label: String,
+     pub value: String,
+     pub nullifier: String,
+@@ -20,4 +23,34 @@ pub struct SnarkInput {
      pub label_index: String,
      #[serde(rename = "labelSiblings")]
      pub label_siblings: Vec<String>,

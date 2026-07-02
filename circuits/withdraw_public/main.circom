@@ -44,6 +44,7 @@ template Withdraw(treeDepth, associationDepth) {
     signal input destinationRecipient;  // P1.7 CCTP: int(recipient32); contract binds arg
     signal input maxFee;                // P1.7 CCTP: max fee; contract binds arg
     signal input minFinalityThreshold;  // P1.7 CCTP: min finality threshold; contract binds arg
+    signal input assetId;               // Phase 2: note asset id; contract binds arg + selects token
 
     // PRIVATE SIGNALS
     signal input label;                 // hash(scope, nonce)
@@ -60,8 +61,9 @@ template Withdraw(treeDepth, associationDepth) {
     // OUTPUT SIGNALS
     signal output nullifierHash;        // [0] domain-separated public nullifier
 
-    // compute commitment (formula unchanged: Poseidon(value, label, Poseidon(nullifier, secret)))
+    // compute commitment (asset-bound: Poseidon(Poseidon(assetId,value,label), Poseidon(nullifier,secret)))
     component commitmentHasher = CommitmentHasher();
+    commitmentHasher.assetId <== assetId;
     commitmentHasher.label <== label;
     commitmentHasher.value <== value;
     commitmentHasher.secret <== secret;
@@ -128,6 +130,10 @@ template Withdraw(treeDepth, associationDepth) {
     signal drBind <== destinationRecipient * destinationRecipient;
     signal mfBind <== maxFee * maxFee;
     signal ftBind <== minFinalityThreshold * minFinalityThreshold;
+
+    // Phase 2: assetId is already constrained via the commitment; bind it as a
+    // pass-through public input too so the contract can enforce arg == signal.
+    signal aidBind <== assetId * assetId;
 }
 
-component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId, quoteHash, intentHash, fillReceiptHash, destinationDomain, destinationRecipient, maxFee, minFinalityThreshold]} = Withdraw(12, 2);
+component main {public [operationType, withdrawnValue, recipientHash, relayerFee, deadlineLedger, stateRoot, associationRoot, poolId, chainId, quoteHash, intentHash, fillReceiptHash, destinationDomain, destinationRecipient, maxFee, minFinalityThreshold, assetId]} = Withdraw(12, 2);

@@ -35,7 +35,7 @@ function coinFromPath(path: string): GeneratedCoin {
   // the same JSON contract generateCoin produces — only the public fields are used
   // here; the private opening is read inside the builder when it shells coinutils.
   const c = JSON.parse(readFileSync(path, "utf8"));
-  return { path, commitmentHex: c.commitment_hex, commitmentDecimal: c.coin.commitment, value7dp: c.coin.value };
+  return { path, commitmentHex: c.commitment_hex, commitmentDecimal: c.coin.commitment, value7dp: c.coin.value, assetIdField: c.coin.asset_id ?? "" };
 }
 
 // Process one claimed proof job through the documented status lifecycle.

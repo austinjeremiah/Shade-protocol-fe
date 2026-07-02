@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 import { SHADE_ROOT, COINUTILS_BIN, CIRCOM2SOROBAN_BIN, withdrawCircuitDir, transferCircuitDir, depositCircuitDir } from "./paths.js";
+import { ASSETS } from "@shade/assets";
 
 // Invoke snarkjs via the Node binary rather than relying on a global PATH entry.
 // On Windows, node_modules/.bin/snarkjs is a .cmd shim that execFileSync can't
@@ -24,16 +25,22 @@ export type GeneratedCoin = {
   commitmentHex: string;
   commitmentDecimal: string;
   value7dp: string;
+  assetIdField: string;
 };
 
-export function generateCoin(scope: string, outPath: string): GeneratedCoin {
-  execFileSync(COINUTILS, ["generate", scope, "-o", outPath], { encoding: "utf8" });
+// Phase 2: every coin binds an asset id into its commitment. `assetIdField`
+// defaults to the canonical USDC id (the only asset before Phase 2, and the one
+// the deposit path binds via assetStrkey), so existing USDC-only callers are
+// unchanged; multi-asset callers pass an explicit id from @shade/assets.
+export function generateCoin(scope: string, outPath: string, assetIdField: string = ASSETS.USDC.assetIdField): GeneratedCoin {
+  execFileSync(COINUTILS, ["generate", scope, "-o", outPath, "--asset-id", assetIdField], { encoding: "utf8" });
   const coin = JSON.parse(readFileSync(outPath, "utf8"));
   return {
     path: outPath,
     commitmentHex: coin.commitment_hex,
     commitmentDecimal: coin.coin.commitment,
-    value7dp: coin.coin.value
+    value7dp: coin.coin.value,
+    assetIdField: coin.coin.asset_id
   };
 }
 

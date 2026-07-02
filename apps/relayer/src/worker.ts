@@ -99,7 +99,7 @@ async function computeMpcRoot(
 
 function coinFromPath(path: string): GeneratedCoin {
   const c = JSON.parse(readFileSync(path, "utf8"));
-  return { path, commitmentHex: c.commitment_hex, commitmentDecimal: c.coin.commitment, value7dp: c.coin.value };
+  return { path, commitmentHex: c.commitment_hex, commitmentDecimal: c.coin.commitment, value7dp: c.coin.value, assetIdField: c.coin.asset_id ?? "" };
 }
 
 const RPC = process.env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org";
@@ -297,7 +297,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
 
         const coinFile = (path: string) => {
           const raw = JSON.parse(readFileSync(path, "utf8"));
-          return { path, commitmentHex: raw.commitment_hex as string, commitmentDecimal: raw.coin.commitment as string, value7dp: raw.coin.value as string };
+          return { path, commitmentHex: raw.commitment_hex as string, commitmentDecimal: raw.coin.commitment as string, value7dp: raw.coin.value as string, assetIdField: (raw.coin.asset_id ?? "") as string };
         };
 
         // Fetch pool commitments for Merkle proof generation.

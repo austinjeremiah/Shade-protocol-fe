@@ -49,9 +49,10 @@ try {
   });
   check("deposit_note_mint job ready + commitment bound", d.status === "ready" && d.result?.commitmentHex === dc.commitmentHex, `status=${d.status}`);
 
-  // private_transfer
+  // private_transfer (ASP membership is enforced in-circuit, so supply an assoc set)
   const tc = generateCoin("ptest_xfer", `${SCRATCH}/ptest_x.json`);
-  const t = await runJob("private_transfer", { coinPath: tc.path, scope: "ptest_xfer", commitmentsDecimal: [tc.commitmentDecimal], fee7dp: "100000", tag: "ptest_x" });
+  const tassoc = buildAssociationSet(tc, SCRATCH, "ptest_x");
+  const t = await runJob("private_transfer", { coinPath: tc.path, scope: "ptest_xfer", commitmentsDecimal: [tc.commitmentDecimal], fee7dp: "100000", tag: "ptest_x", assocPath: tassoc.assocPath });
   check("private_transfer job ready + proof bytes", t.status === "ready" && typeof t.result?.proofHex === "string", `status=${t.status}`);
 
   // failure path: a bad payload must mark the job failed (not crash the worker).

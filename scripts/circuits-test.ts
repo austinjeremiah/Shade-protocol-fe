@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { beginReport, writeCheckReport, failIfAny, type CheckResult } from "../apps/cli/src/lib/report.js";
 import {
   generateCoin, buildAssociationSet, buildNoteProof, buildTransferProof, buildDepositProof
 } from "../apps/cli/src/lib/prove.js";
+import { ASSETS } from "@shade/assets";
 
 // C1: real circuit tests — generate a sample witness for each circuit, produce a
 // Groth16 proof, and verify it locally (snarkjs groth16 verify). Pure offline; no
@@ -20,6 +22,28 @@ try {
   });
   checks.push({ name: "withdraw_public proof verifies", ok: wproof.locallyVerified, detail: wproof.locallyVerified ? "OK" : "verify FAILED" });
 } catch (e) { checks.push({ name: "withdraw_public proof verifies", ok: false, detail: (e as Error).message.slice(0, 160) }); }
+
+try {
+  // §6.8 cross-asset: a USDC note must NOT be provable as an XLM withdrawal.
+  // The note's commitment binds assetId; tampering assetId to XLM changes the
+  // computed commitment so it is no longer a leaf in the (USDC) state tree, so
+  // the witness cannot be built. We assert this FAILS closed.
+  const usdc = generateCoin("ctest_xasset", `${SCRATCH}/ctest_xa.json`, ASSETS.USDC.assetIdField);
+  const xassoc = buildAssociationSet(usdc, SCRATCH, "ctest_xa");
+  const tampered = JSON.parse(readFileSync(usdc.path, "utf8"));
+  tampered.coin.asset_id = ASSETS.XLM.assetIdField; // claim it's XLM
+  const tamperedPath = `${SCRATCH}/ctest_xa_xlm.json`;
+  writeFileSync(tamperedPath, JSON.stringify(tampered));
+  let rejected = false;
+  try {
+    // State tree holds the real USDC commitment; the XLM-claimed coin computes a
+    // different commitment → not found → withdraw witness build fails.
+    buildNoteProof({ ...usdc, path: tamperedPath }, [usdc.commitmentDecimal], "ctest_xasset", SCRATCH, "ctest_xa_x", xassoc.assocPath, {
+      operationType: "1", recipientHash: "0", relayerFee: "0", deadlineLedger: "999999999"
+    });
+  } catch { rejected = true; }
+  checks.push({ name: "USDC note cannot prove withdrawal as XLM (asset-bound)", ok: rejected, detail: rejected ? "rejected" : "MISMATCH ACCEPTED" });
+} catch (e) { checks.push({ name: "USDC note cannot prove withdrawal as XLM (asset-bound)", ok: false, detail: (e as Error).message.slice(0, 160) }); }
 
 try {
   // private_transfer: spend input note, create output note, public fee, ASP allow-set membership.

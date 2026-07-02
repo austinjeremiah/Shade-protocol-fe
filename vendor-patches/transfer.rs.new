@@ -30,6 +30,12 @@ pub struct TransferInput {
     pub pool_id: String,
     #[serde(rename = "chainId")]
     pub chain_id: String,
+    // Phase 2: input/output asset ids (public). For a same-asset transfer the
+    // circuit enforces inputAssetId == outputAssetId.
+    #[serde(rename = "inputAssetId")]
+    pub input_asset_id: String,
+    #[serde(rename = "outputAssetId")]
+    pub output_asset_id: String,
     // private — input note
     #[serde(rename = "inValue")]
     pub in_value: String,
@@ -87,7 +93,9 @@ impl TransferManager {
         let in_nullifier = decimal_string_to_bls_scalar(env, &coin.nullifier)?;
         let in_secret = decimal_string_to_bls_scalar(env, &coin.secret)?;
         let in_label = decimal_string_to_bls_scalar(env, &coin.label)?;
-        let in_commitment = generate_commitment(env, in_value.clone(), in_label.clone(), in_nullifier.clone(), in_secret.clone());
+        // Phase 2: same-asset transfer — the output note inherits the input's asset.
+        let asset_id = decimal_string_to_bls_scalar(env, &coin.asset_id)?;
+        let in_commitment = generate_commitment(env, asset_id.clone(), in_value.clone(), in_label.clone(), in_nullifier.clone(), in_secret.clone());
 
         // membership proof for the input commitment
         let mut tree = LeanIMT::new(env, TREE_DEPTH);
@@ -129,7 +137,7 @@ impl TransferManager {
         let out_secret = rand_fr(env);
         let nonce = thread_rng().gen::<[u8; 32]>();
         let out_label = generate_label(env, out_scope, &nonce);
-        let out_commitment = generate_commitment(env, out_value.clone(), out_label.clone(), out_nullifier.clone(), out_secret.clone());
+        let out_commitment = generate_commitment(env, asset_id.clone(), out_value.clone(), out_label.clone(), out_nullifier.clone(), out_secret.clone());
 
         let _ = fee.clone();
 
@@ -140,6 +148,8 @@ impl TransferManager {
             association_root,
             pool_id: POOL_ID.to_string(),
             chain_id: CHAIN_ID.to_string(),
+            input_asset_id: coin.asset_id.clone(),
+            output_asset_id: coin.asset_id.clone(),
             in_value: coin.value.clone(),
             in_label: coin.label.clone(),
             in_nullifier: coin.nullifier.clone(),
@@ -161,6 +171,7 @@ impl TransferManager {
                 secret: bls_scalar_to_decimal_string(&out_secret),
                 label: bls_scalar_to_decimal_string(&out_label),
                 commitment: bls_scalar_to_decimal_string(&out_commitment),
+                asset_id: coin.asset_id.clone(),
             },
             commitment_hex: format!("0x{}", hex::encode(out_commitment.to_bytes().to_array())),
         };

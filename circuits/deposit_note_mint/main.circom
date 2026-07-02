@@ -57,6 +57,7 @@ template DepositNoteMint() {
     // Recompute the commitment from the opening (formula matches coinutils +
     // the withdraw/transfer circuits: Poseidon(value,label,Poseidon(nullifier,secret))).
     component commitmentHasher = CommitmentHasher();
+    commitmentHasher.assetId <== assetIdHash;   // Phase 2: bind the asset into the note
     commitmentHasher.value <== value;
     commitmentHasher.label <== label;
     commitmentHasher.secret <== secret;
