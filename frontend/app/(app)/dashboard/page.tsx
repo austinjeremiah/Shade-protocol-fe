@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react"
 import { usePrivy } from "@privy-io/react-auth"
 import { useMe, useSyncWallets, useContracts, useActivity } from "@/lib/hooks"
+import { useNoteVaults, isDepositReady } from "@/lib/vault-hooks"
 import { walletsFromPrivyUser } from "@/lib/privy-wallets"
-import { Copy, ExternalLink } from "lucide-react"
+import { VaultSetup } from "@/components/vault-setup"
+import { Copy, ExternalLink, ShieldCheck, ShieldAlert } from "lucide-react"
 
 export default function DashboardPage() {
   const { user, authenticated } = usePrivy()
@@ -13,6 +15,10 @@ export default function DashboardPage() {
   const activity = useActivity(authenticated)
   const sync = useSyncWallets()
   const synced = useRef(false)
+  const vaults = useNoteVaults(authenticated)
+  const readyVault = (vaults.data?.vaults ?? []).find(isDepositReady)
+  const hasVault = (vaults.data?.vaults ?? []).length > 0
+  const [showSetup, setShowSetup] = useState(false)
 
   // On first authenticated mount, push Privy linked wallets to the backend, then refresh /v1/me.
   useEffect(() => {
@@ -35,6 +41,27 @@ export default function DashboardPage() {
         </h1>
         <p className="mt-2 font-mono text-xs text-muted-foreground">shielded on Stellar · hidden from public chain</p>
       </div>
+
+      {/* Vault status / gate */}
+      {!vaults.isLoading && (
+        readyVault ? (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-emerald-400/25 bg-emerald-400/5 px-5 py-3">
+            <span className="flex items-center gap-2 font-mono text-xs text-emerald-400">
+              <ShieldCheck className="h-4 w-4" /> Vault ready · backup verified · you can deposit
+            </span>
+            <a href="/deposit" className="font-mono text-xs uppercase tracking-wider text-foreground hover:underline">Deposit →</a>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2563eb]/30 bg-[#2563eb]/5 px-5 py-3">
+            <span className="flex items-center gap-2 font-mono text-xs text-[#2563eb]">
+              <ShieldAlert className="h-4 w-4" /> {hasVault ? "Finish vault backup to deposit" : "Set up your private vault before depositing"}
+            </span>
+            <button onClick={() => setShowSetup(true)} className="rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-4 py-1.5 font-mono text-[10px] uppercase tracking-wider text-foreground hover:bg-[#2563eb]/20">
+              Set up vault
+            </button>
+          </div>
+        )
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Account */}
@@ -78,6 +105,23 @@ export default function DashboardPage() {
           ))}
         </div>
       </Card>
+
+      {/* Vault setup modal */}
+      {showSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm" onClick={() => setShowSetup(false)}>
+          <div className="w-full max-w-2xl rounded-xl border border-border bg-[#0a0a0c] p-8" onClick={(e) => e.stopPropagation()}>
+            <VaultSetup
+              onDone={() => {
+                setShowSetup(false)
+                vaults.refetch()
+              }}
+            />
+            <button onClick={() => setShowSetup(false)} className="mt-6 font-mono text-xs text-muted-foreground hover:text-foreground">
+              close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

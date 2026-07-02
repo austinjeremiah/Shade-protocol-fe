@@ -5,6 +5,7 @@ import { PrivyProvider, usePrivy } from "@privy-io/react-auth"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { setTokenGetter } from "@/lib/token"
+import { VaultProvider } from "@/lib/vault-store"
 
 // Wires the Privy access token into the non-React api client, once, on mount.
 function TokenBridge() {
@@ -27,12 +28,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       config={{
         appearance: { theme: "dark", accentColor: "#2563eb" },
         loginMethods: ["email", "wallet"],
-        embeddedWallets: { createOnLogin: "users-without-wallets" },
+        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
       }}
     >
       <QueryClientProvider client={queryClient}>
         <TokenBridge />
-        {children}
+        <VaultProvider>{children}</VaultProvider>
       </QueryClientProvider>
     </PrivyProvider>
   )
