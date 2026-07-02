@@ -423,8 +423,10 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
         "--batch_hash",          hash32,
         "--signer_pubkeys",      pubkeysJson,
         "--signatures",          sigsJson,
-        "--proof_bytes",         zkProofHex ?? "null",
-        "--pub_signals_bytes",   zkPublicHex ?? "null",
+        // Option<Bytes> args are JSON-parsed by the stellar CLI: Some(hex) must be
+        // a JSON-quoted hex string, None is the literal null.
+        "--proof_bytes",         zkProofHex ? JSON.stringify(zkProofHex) : "null",
+        "--pub_signals_bytes",   zkPublicHex ? JSON.stringify(zkPublicHex) : "null",
       ]
     });
     return {
