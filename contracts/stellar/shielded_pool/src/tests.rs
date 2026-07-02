@@ -105,6 +105,17 @@ fn keypair(seed: u8) -> SigningKey {
     SigningKey::from_bytes(&[seed; 32])
 }
 
+/// Phase 7: independently compute the root the contract will produce after
+/// appending `leaves` to an empty depth-12 LeanIMT — the same tree the contract
+/// owns. Lets tests assert the contract computes the exact expected root.
+fn compute_root(env: &Env, leaves: &[BytesN<32>]) -> BytesN<32> {
+    let mut t = lean_imt::LeanIMT::new(env, 12);
+    for l in leaves {
+        t.insert(l.clone()).unwrap();
+    }
+    t.get_root()
+}
+
 fn pk_bytes(env: &Env, sk: &SigningKey) -> BytesN<32> {
     BytesN::from_array(env, &sk.verifying_key().to_bytes())
 }
@@ -202,7 +213,7 @@ fn cctp_deposit_duplicate_nonce_no_second_note() {
     let enc = BytesN::from_array(&env, &[0xB2u8; 32]);
     let policy = BytesN::from_array(&env, &[0xC3u8; 32]);
     let commitment = BytesN::from_array(&env, &[0xD4u8; 32]);
-    let new_root = BytesN::from_array(&env, &[0xE5u8; 32]);
+    let new_root = compute_root(&env, &[commitment.clone()]); // contract-computed append root
     let (amount7, amount6): (u128, u128) = (1_000_000, 100_000); // 100_000*10 == 1_000_000
 
     // 14-word deposit signals bound to the args the contract checks.
@@ -384,7 +395,9 @@ fn seed_deposit(env: &Env, pool: &ShieldedPoolClient<'static>, pool_id: &Address
     let enc = BytesN::from_array(env, &[0xB2u8; 32]);
     let policy = BytesN::from_array(env, &[0xC3u8; 32]);
     let commitment = BytesN::from_array(env, &[nonce_byte.wrapping_add(1); 32]);
-    let new_root = BytesN::from_array(env, &[nonce_byte.wrapping_add(2); 32]);
+    // Root integrity: the contract computes the root itself — supply the matching
+    // append root (this deposit is the first/only insert in the seeding harnesses).
+    let new_root = compute_root(env, &[commitment.clone()]);
     let amount6 = amount7 / 10;
     let words: [[u8; 32]; 14] = [
         commitment.to_array(), enc_u128(4), enc_u128(3), enc_u128(27),
@@ -436,6 +449,51 @@ fn withdraw_selects_token_by_asset_and_debits_supply() {
     assert_eq!(w.pool.note_supply(&w.asset_id), 6_000_000, "note supply debited by withdrawnValue");
     let (supply, bal) = w.pool.proof_of_reserves(&w.asset_id);
     assert!(supply <= bal, "reserve invariant: note_supply <= vault_balance");
+}
+
+// ---- Phase 7 root integrity (spec §13.3) ----
+
+#[test]
+fn deposit_forged_new_root_rejected() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    // Build a valid deposit but pass a FORGED new_root that is not the contract's
+    // append(old_root, commitment). The contract computes the root itself and
+    // rejects the mismatch (RootMismatch) — a caller cannot record a bogus root.
+    let nonce = BytesN::from_array(env, &[0x71u8; 32]);
+    let enc = BytesN::from_array(env, &[0xB2u8; 32]);
+    let policy = BytesN::from_array(env, &[0xC3u8; 32]);
+    let commitment = BytesN::from_array(env, &[0x72u8; 32]);
+    let forged_root = BytesN::from_array(env, &[0xFFu8; 32]); // not the real append root
+    let words: [[u8; 32]; 14] = [
+        commitment.to_array(), enc_u128(4), enc_u128(3), enc_u128(27),
+        hash_field(&nonce.to_array()), enc_u128(1), enc_u128(100_000), enc_u128(1_000_000),
+        w.asset_id_bytes, recip_hash(env, &w.pool_id), hash_field(&enc.to_array()), hash_field(&policy.to_array()),
+        enc_u128(1), enc_u128(27),
+    ];
+    let signals = build_signals(env, &words);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    let r = w.pool.try_receive_cctp_deposit(&3u32, &nonce, &w.token_admin.address, &1_000_000i128, &commitment, &forged_root, &enc, &policy, &proof, &signals);
+    assert!(r.is_err(), "a forged new_root must be rejected — the contract owns the tree");
+}
+
+#[test]
+fn withdraw_against_forged_root_fails() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    // A root that was never produced by the contract's tree is not a known root,
+    // so a withdraw proving membership under it must fail.
+    let forged = [0xABu8; 32];
+    let mut words: [[u8; 32]; 18] = [
+        [1u8; 32], enc_u128(1), enc_u128(1_000_000), recip_hash(env, &w.to), [0u8; 32],
+        enc_u128(999_999), forged /* [6] forged stateRoot */, [0u8; 32], enc_u128(1), enc_u128(27),
+        [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32], w.asset_id_bytes,
+    ];
+    let _ = &mut words;
+    let signals = build_signals(env, &words);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    let r = w.pool.try_withdraw(&w.to, &proof, &signals);
+    assert!(r.is_err(), "withdraw against a forged (never-stored) state root must fail");
 }
 
 #[test]
@@ -788,7 +846,8 @@ fn setup_proof(accept: bool) -> ProofHarness {
         nullifier_b: BytesN::from_array(env, &[2u8; 32]),
         out_a: BytesN::from_array(env, &[3u8; 32]),
         out_b: BytesN::from_array(env, &[4u8; 32]),
-        new_root: BytesN::from_array(env, &[5u8; 32]),
+        // Root integrity: contract appends out_a then out_b — expected root.
+        new_root: compute_root(env, &[BytesN::from_array(env, &[3u8; 32]), BytesN::from_array(env, &[4u8; 32])]),
         assoc,
         proof: Bytes::from_array(env, &[0xabu8; 8]),
         h,
@@ -1009,7 +1068,8 @@ fn setup_priced(accept: bool) -> PricedHarness {
         nb: BytesN::from_array(env, &[0x12u8; 32]),
         oa: BytesN::from_array(env, &[0x13u8; 32]),
         ob: BytesN::from_array(env, &[0x14u8; 32]),
-        new_root: BytesN::from_array(env, &[0x15u8; 32]),
+        // Root integrity: contract appends oa then ob — expected root.
+        new_root: compute_root(env, &[BytesN::from_array(env, &[0x13u8; 32]), BytesN::from_array(env, &[0x14u8; 32])]),
         h,
     }
 }

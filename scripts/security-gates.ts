@@ -143,6 +143,16 @@ const gates: Gate[] = [
     // Phase 7: per-asset supply must fail closed (no negative supply, supply <= balance).
     name: "adjust_note_supply enforces reserve invariant (Phase 7)",
     cmd: `( grep -q "Error::SupplyUnderflow" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::ReserveBroken" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo RESERVE_INVARIANT_MISSING`
+  },
+  {
+    // Phase 7 root integrity (§13): the contract computes the tree root itself
+    // (append_leaf via on-chain LeanIMT) and rejects a caller-supplied new_root
+    // that does not match — no insert path trusts an unverified root.
+    name: "contract owns tree root integrity (Phase 7 §13)",
+    // The 4 insert paths must compute the root via append_leaf and reject a
+    // mismatching caller-supplied new_root. Guard against a regression that
+    // records a caller root directly (KnownRoot(new_root) without append_leaf).
+    cmd: `( grep -q "fn append_leaf" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::RootMismatch" contracts/stellar/shielded_pool/src/lib.rs && [ "$(grep -c "append_leaf(&env," contracts/stellar/shielded_pool/src/lib.rs)" -ge 5 ] ) && echo "" || echo ROOT_INTEGRITY_MISSING`
   }
 ];
 

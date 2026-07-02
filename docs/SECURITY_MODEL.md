@@ -29,26 +29,24 @@
   equality, no zero-bypass).
 - Shade View: view-key reports are data-only (no note secrets / spend material);
   the signature covers the whole report; only opt-in amounts appear.
+- **Root integrity (spec §13, Option A).** The pool OWNS its Merkle tree on-chain
+  via LeanIMT (the same tree the circuits + coinutils use). Every insert path
+  (`receive_cctp_deposit`, `private_transfer_settle`, `mpc_settle`,
+  `mpc_settle_priced`) computes the new root by appending the commitment(s)
+  itself (`append_leaf`) and rejects a caller-supplied `new_root` that doesn't
+  match (`RootMismatch`). No entrypoint trusts an unverified root; a forged root
+  is rejected and a withdraw against a never-stored root fails.
 
 ## Known open items (NOT yet closed)
 
 These are tracked honestly and are the remaining work before an exit-gate claim:
 
-1. **Root integrity (spec §13).** The contract still accepts a caller/registrar-
-   supplied `new_root` in `receive_cctp_deposit`, `private_transfer_settle`,
-   `mpc_settle`, and `mpc_settle_priced` (recorded as a known root AFTER proof
-   verification, but the contract does not itself prove
-   `new_root = append(old_root, commitment(s))`). Closing this requires either an
-   on-chain incremental (frontier) tree (Option A — the `lean_imt` crate exists)
-   or a ZK insertion proof (Option B) wired into all four insert paths. Until
-   then, tree-state integrity is operator-trusted in those paths.
-
-2. **Compliance DENY-set non-membership (spec §11.1).** Allow-set membership is
+1. **Compliance DENY-set non-membership (spec §11.1).** Allow-set membership is
    enforced everywhere; deny-set non-membership (a sorted deny-tree + in-circuit
    exclusion proof) is not yet implemented. The `compliance_membership` circuit
    directory is a scoped placeholder (README only).
 
-3. **Testnet E2E product wiring (spec §12, Phase 8).** The contract primitives,
+2. **Testnet E2E product wiring (spec §12, Phase 8).** The contract primitives,
    circuits, and backend crypto for every flow are built and unit/contract/
    circuit-tested, but the end-to-end testnet product paths are not all wired:
    - the relayer's RFQ job still calls the legacy `rfq_settle`, not

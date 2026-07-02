@@ -9,6 +9,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "25.1.0"
+# Phase 7 root integrity (spec §13): the pool owns tree state via the on-chain
+# incremental Merkle tree (same LeanIMT the circuits + coinutils use), so a
+# caller can no longer supply a forged new_root.
+lean-imt = { path = "../lean_imt" }
 
 [dev-dependencies]
 soroban-sdk = { version = "25.1.0", features = ["testutils"] }

@@ -25,6 +25,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, vec, Address, Bytes,
     BytesN, Env, IntoVal, Symbol, Val, Vec,
 };
+use lean_imt::LeanIMT;
 
 // P1.5 operation types bound into the proof public input [1].
 const OP_WITHDRAW_PUBLIC: i128 = 1;
@@ -47,6 +48,8 @@ const ARBITRUM_SEPOLIA_DOMAIN: u32 = 3; // Phase 4 (spec §8.6): the only suppor
 // nullifier spend, fund release) remain fully on-chain; only root *computation*
 // is off-chain, which is acceptable pre-MPC/TEE and documented in docs/.
 const TREE_ROOT_KEY: Symbol = symbol_short!("root");
+const TREE_DEPTH: Symbol = symbol_short!("treedep");   // Phase 7: on-chain tree depth
+const TREE_LEAVES: Symbol = symbol_short!("leaves");   // Phase 7: on-chain leaf list (root integrity)
 // P3 #19: leaves are NOT stored as an on-chain Vec<BytesN<32>> — that vector
 // was rewritten in full on every single deposit/transfer/settle (O(n) cost
 // per op) and grows without bound toward the Soroban ledger-entry size limit.
@@ -101,6 +104,8 @@ pub enum Error {
     NotCrossAsset = 35,     // Phase 6: priced settlement input assets are equal (not a cross-asset)
     SupplyUnderflow = 36,   // Phase 7: a note-supply debit would drive per-asset supply negative
     ReserveBroken = 37,     // Phase 7: note_supply(asset) would exceed vault_balance(asset)
+    TreeFull = 38,          // Phase 7: on-chain Merkle tree is at capacity (2^depth leaves)
+    RootMismatch = 39,      // Phase 7: caller's new_root != the contract-computed append root
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -156,12 +161,15 @@ impl ShieldedPool {
         env.storage().instance().set(&POOLID, &pool_id);
         env.storage().instance().set(&CHAINID, &chain_id);
 
-        // Empty-tree root for the configured depth (computed off-chain, passed in
-        // as `empty_root`) is recorded as a known root so an empty-pool proof is
-        // possible; depth is informational on-chain.
-        let _ = depth;
+        // Phase 7 root integrity (spec §13): the pool OWNS its Merkle tree. It
+        // starts empty; the empty-tree root ([0;32], matching an all-zero
+        // depth-`depth` LeanIMT with no leaves) is recorded as a known root so an
+        // empty-pool proof is possible. Every subsequent insert path computes the
+        // new root on-chain via LeanIMT — no caller-supplied root is trusted.
+        env.storage().instance().set(&TREE_DEPTH, &depth);
         let empty_root = BytesN::from_array(&env, &[0u8; 32]);
         env.storage().instance().set(&TREE_ROOT_KEY, &empty_root);
+        env.storage().instance().set(&TREE_LEAVES, &Vec::<BytesN<32>>::new(&env));
         env.storage().instance().set(&LEAF_COUNT_KEY, &0u32);
         env.storage().persistent().set(&DataKey::KnownRoot(empty_root), &true);
     }
@@ -273,8 +281,14 @@ impl ShieldedPool {
 
         let leaf_index: u32 = env.storage().instance().get(&LEAF_COUNT_KEY).unwrap_or(0u32);
         env.storage().instance().set(&LEAF_COUNT_KEY, &(leaf_index + 1));
-        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
-        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
+        // Phase 7 root integrity: the contract COMPUTES the new root by appending
+        // this commitment to its own LeanIMT — the `new_root` argument is NOT
+        // trusted (a forged value has no effect). The arg is retained only for
+        // ABI/event compatibility and is cross-checked against the computed root.
+        let computed_root = Self::append_leaf(&env, &commitment);
+        if new_root != computed_root {
+            panic_err(&env, Error::RootMismatch);
+        }
         env.storage().persistent().set(&DataKey::Deposit(cctp_nonce.clone()), &true);
         // Phase 2 (spec §6.6): the minted note enters the shielded set for its
         // asset. signal[8] (assetIdHash) IS the field asset id; the asset must be
@@ -282,7 +296,7 @@ impl ShieldedPool {
         Self::adjust_note_supply(&env, &signals.get(8).unwrap(), amount);
         env.events().publish(
             (symbol_short!("deposit"), source_domain),
-            (cctp_nonce, asset, amount, commitment, encrypted_note_payload_hash, policy_id, leaf_index, new_root),
+            (cctp_nonce, asset, amount, commitment, encrypted_note_payload_hash, policy_id, leaf_index, computed_root),
         );
         leaf_index
     }
@@ -451,15 +465,19 @@ impl ShieldedPool {
             vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()],
         );
 
-        // Insert the output commitment (new note); registrar supplies the new root.
+        // Phase 7 root integrity: the contract appends the output commitment to
+        // its own tree and computes the new root; the passed new_root is verified
+        // against it, never trusted.
         let leaf_index: u32 = env.storage().instance().get(&LEAF_COUNT_KEY).unwrap_or(0u32);
         env.storage().instance().set(&LEAF_COUNT_KEY, &(leaf_index + 1));
-        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
-        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
+        let computed_root = Self::append_leaf(&env, &output_commitment);
+        if new_root != computed_root {
+            panic_err(&env, Error::RootMismatch);
+        }
 
         env.events().publish(
             (symbol_short!("xfer"),),
-            (nullifier_hash, output_commitment, leaf_index, new_root),
+            (nullifier_hash, output_commitment, leaf_index, computed_root),
         );
     }
 
@@ -1100,14 +1118,19 @@ impl ShieldedPool {
         let leaf_count: u32 = env.storage().instance().get(&LEAF_COUNT_KEY).unwrap_or(0u32);
         env.storage().instance().set(&LEAF_COUNT_KEY, &(leaf_count + 2));
 
-        // Record the new Merkle root (includes both output commitments inserted off-chain).
-        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
-        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
+        // Phase 7 root integrity: append BOTH output commitments on-chain
+        // (root = append(append(old, A), B)) and verify the caller's new_root
+        // matches — the contract owns tree state.
+        Self::append_leaf(&env, &output_commitment_a);
+        let computed_root = Self::append_leaf(&env, &output_commitment_b);
+        if new_root != computed_root {
+            panic_err(&env, Error::RootMismatch);
+        }
 
         // Emit event so indexers credit the two output notes to recipients.
         env.events().publish(
             (symbol_short!("mpc"), batch_hash),
-            (nullifier_a, nullifier_b, output_commitment_a, output_commitment_b, new_root),
+            (nullifier_a, nullifier_b, output_commitment_a, output_commitment_b, computed_root),
         );
     }
 
@@ -1212,12 +1235,17 @@ impl ShieldedPool {
 
         let leaf_count: u32 = env.storage().instance().get(&LEAF_COUNT_KEY).unwrap_or(0u32);
         env.storage().instance().set(&LEAF_COUNT_KEY, &(leaf_count + 2));
-        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
-        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
+        // Phase 7 root integrity: append both output commitments on-chain and
+        // verify the caller's new_root matches the computed append root.
+        Self::append_leaf(&env, &output_commitment_a);
+        let computed_root = Self::append_leaf(&env, &output_commitment_b);
+        if new_root != computed_root {
+            panic_err(&env, Error::RootMismatch);
+        }
 
         env.events().publish(
             (symbol_short!("mpcprice"), batch_hash),
-            (nullifier_a, nullifier_b, output_commitment_a, output_commitment_b, new_root),
+            (nullifier_a, nullifier_b, output_commitment_a, output_commitment_b, computed_root),
         );
     }
 
@@ -1265,6 +1293,31 @@ impl ShieldedPool {
     fn require_admin(env: &Env) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
+    }
+
+    /// Phase 7 root integrity (spec §13, Option A): append `commitment` to the
+    /// pool's on-chain LeanIMT and return the NEW authoritative root, which is
+    /// recorded as a known root. The contract owns tree state — the root is
+    /// COMPUTED here, never taken from a caller — so a forged `new_root` argument
+    /// cannot make a bogus note set spendable. Callers that add two output
+    /// commitments call this twice (root = append(append(old, A), B)).
+    fn append_leaf(env: &Env, commitment: &BytesN<32>) -> BytesN<32> {
+        let depth: u32 = env.storage().instance().get(&TREE_DEPTH).unwrap();
+        let mut leaves: Vec<BytesN<32>> = env.storage().instance().get(&TREE_LEAVES).unwrap_or(Vec::new(env));
+        // Rebuild the tree from the stored leaves + the new commitment. O(n) per
+        // append (acceptable for testnet; a frontier optimization is a follow-up)
+        // but uses the exact LeanIMT::new + insert path the circuits/coinutils use.
+        let mut tree = LeanIMT::new(env, depth);
+        for l in leaves.iter() {
+            tree.insert(l.clone()).unwrap_or_else(|_| panic_err(env, Error::TreeFull));
+        }
+        tree.insert(commitment.clone()).unwrap_or_else(|_| panic_err(env, Error::TreeFull));
+        leaves.push_back(commitment.clone());
+        let new_root = tree.get_root();
+        env.storage().instance().set(&TREE_LEAVES, &leaves);
+        env.storage().instance().set(&TREE_ROOT_KEY, &new_root);
+        env.storage().persistent().set(&DataKey::KnownRoot(new_root.clone()), &true);
+        new_root
     }
 
     /// Shared committee-signature check used by mpc_settle and mpc_settle_priced.

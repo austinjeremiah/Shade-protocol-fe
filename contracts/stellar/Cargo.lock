@@ -890,6 +890,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lean-imt"
+version = "0.1.0"
+dependencies = [
+ "soroban-poseidon",
+ "soroban-sdk 25.3.1",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1313,6 +1321,7 @@ name = "shielded_pool"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "lean-imt",
  "soroban-sdk 25.3.1",
 ]
 
@@ -1555,6 +1564,15 @@ dependencies = [
  "soroban-env-common 25.0.1",
  "soroban-env-host 25.0.1",
  "thiserror",
+]
+
+[[package]]
+name = "soroban-poseidon"
+version = "25.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea4815af86664539b3665fe5d2f3f8a87a6a8bf8186f22f2976497c362d370f"
+dependencies = [
+ "soroban-sdk 25.3.1",
 ]
 
 [[package]]
