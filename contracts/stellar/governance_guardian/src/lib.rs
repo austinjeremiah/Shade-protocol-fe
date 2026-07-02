@@ -2,25 +2,25 @@
 //! GovernanceGuardian: pause/upgrade authority for upgradeable custody contracts
 //! (bible: "Timelock for upgrades; immediate pause only for guardian quorum").
 //!
-//! P3 #20: a prior version of this contract was 36 LOC — a single `guardian`
+//! a prior version of this contract was 36 LOC — a single `guardian`
 //! address could pause/unpause instantly with no quorum, and there was no
 //! upgrade path at all (contracts like shielded_pool expose their own
-//! `upgrade()` gated only by a single admin key, with no timelock — bible
-//! Sec "Contract upgrade rule" items #6/#7). This version adds:
-//!   - a guardian SET with an admin-configurable M-of-N threshold;
-//!   - pause/unpause: no timelock (must stay fast for real incidents), but
-//!     requires `threshold` distinct guardian approvals, not one key;
-//!   - upgrade: requires `threshold` guardian approvals AND a timelock delay
-//!     after quorum is reached before `execute_upgrade` can run — plus
-//!     `cancel_upgrade`, so a compromised-but-not-quorum guardian key cannot
-//!     force an upgrade through, and a legitimate quorum still has a window
-//!     to react to a bad proposal before it takes effect.
+//! `upgrade` gated only by a single admin key, with no timelock — bible
+//! Sec "Contract upgrade rule" items /. This version adds:
+//! - a guardian SET with an admin-configurable M-of-N threshold;
+//! - pause/unpause: no timelock (must stay fast for real incidents), but
+//! requires `threshold` distinct guardian approvals, not one key;
+//! - upgrade: requires `threshold` guardian approvals AND a timelock delay
+//! after quorum is reached before `execute_upgrade` can run — plus
+//! `cancel_upgrade`, so a compromised-but-not-quorum guardian key cannot
+//! force an upgrade through, and a legitimate quorum still has a window
+//! to react to a bad proposal before it takes effect.
 //!
 //! For this to actually bind a target contract (e.g. shielded_pool), that
 //! contract's ADMIN must be this guardian contract's address — Soroban
-//! authorizes the immediate calling contract for `Address::require_auth()`
+//! authorizes the immediate calling contract for `Address::require_auth`
 //! with no separate signature, so `pool.upgrade(...)` called from inside
-//! `execute_upgrade` satisfies `pool`'s `require_admin()` once `pool`'s admin
+//! `execute_upgrade` satisfies `pool`'s `require_admin` once `pool`'s admin
 //! IS this contract. That is a one-time on-chain `transfer_admin` on the
 //! target (see shielded_pool::transfer_admin) — NOT done automatically by
 //! deploying this contract, since it's a real, hard-to-reverse action against
@@ -87,7 +87,7 @@ pub struct GovernanceGuardian;
 #[contractimpl]
 impl GovernanceGuardian {
     /// `upgrade_delay_ledgers`: minimum ledgers between quorum and execution
-    /// for an upgrade proposal (bible item #6, timelock for upgrade execution).
+    /// for an upgrade proposal (bible item , timelock for upgrade execution).
     pub fn initialize(env: Env, admin: Address, guardians: Vec<Address>, threshold: u32, upgrade_delay_ledgers: u32) {
         if env.storage().instance().has(&ADMIN) { panic!("already initialized"); }
         admin.require_auth();
@@ -99,7 +99,7 @@ impl GovernanceGuardian {
         env.storage().instance().set(&NEXT_PROPOSAL_ID, &0u32);
     }
 
-    // ---- Role management (admin-gated) ----
+    // - Role management (admin-gated) ----
 
     pub fn add_guardian(env: Env, guardian: Address) {
         Self::require_admin(&env);
@@ -134,7 +134,7 @@ impl GovernanceGuardian {
         env.storage().instance().get(&THRESHOLD).unwrap_or(1)
     }
 
-    // ---- Pause / unpause: quorum required, no timelock ----
+    // - Pause / unpause: quorum required, no timelock ----
 
     pub fn propose_pause(env: Env, guardian: Address, contract_id: Address, reason_hash: BytesN<32>, unpause: bool) -> u32 {
         Self::require_is_guardian(&env, &guardian);
@@ -174,7 +174,7 @@ impl GovernanceGuardian {
         env.events().publish((symbol_short!("pause"), id), (proposal.contract_id.clone(), proposal.unpause));
     }
 
-    // ---- Upgrade: quorum THEN timelock, with cancel ----
+    // - Upgrade: quorum THEN timelock, with cancel ----
 
     pub fn propose_upgrade(env: Env, guardian: Address, contract_id: Address, new_wasm_hash: BytesN<32>) -> u32 {
         Self::require_is_guardian(&env, &guardian);

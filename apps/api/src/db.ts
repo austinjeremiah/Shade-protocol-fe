@@ -66,8 +66,8 @@ export class Store {
     );
   }
 
-  // C7: count unresolved ROOT_MISMATCH_CRITICAL findings from the root auditor
-  // (P1.9). The API refuses spends while any exist. Tolerates a missing table
+  // count unresolved ROOT_MISMATCH_CRITICAL findings from the root auditor
+  // (. The API refuses spends while any exist. Tolerates a missing table
   // (migration 002 not yet applied) by treating it as "no findings".
   async criticalRootMismatchCount(): Promise<number> {
     try {
@@ -80,7 +80,7 @@ export class Store {
     }
   }
 
-  // ---- PHASE 6 user-signed deposit ----
+  // - PHASE 6 user-signed deposit ----
 
   async createUserDeposit(input: {
     depositId: string; idempotencyKey: string; userId: string; sourceChain: string; sourceWalletAddress: string;
@@ -135,7 +135,7 @@ export class Store {
     );
   }
 
-  // ---- Privy identity (auth-privy adapter) ----
+  // - Privy identity (auth-privy adapter) ----
 
   // Find or create the user for a Privy DID; bump last_login; ensure a profile.
   async upsertUserByPrivyId(privyUserId: string, profile?: { email?: string; primaryAuthMethod?: string }): Promise<string> {
@@ -165,7 +165,7 @@ export class Store {
     return (r.rowCount ?? 0) > 0;
   }
 
-  // ---- Note vaults (PHASE 4) ----
+  // - Note vaults (PHASE 4) ----
 
   async createNoteVault(input: { userId: string; privyUserId: string; vaultId: string; envelope: unknown; ciphertext: string; aad: unknown; recoveryPolicyStatus: string }): Promise<void> {
     await this.pool.query(
@@ -205,7 +205,7 @@ export class Store {
     return (r.rowCount ?? 0) > 0;
   }
 
-  // FIX3: mark verified AND persist the client's proof-of-decrypt verification.
+  // mark verified AND persist the client's proof-of-decrypt verification.
   async setVaultBackupVerified(userId: string, vaultId: string, verification: unknown): Promise<boolean> {
     const r = await this.pool.query(
       "update note_vaults set backup_status='verified', last_backup_verified_at=now(), last_backup_verification=$3, updated_at=now() where user_id=$1 and vault_id=$2",
@@ -247,7 +247,7 @@ export class Store {
     return rows as Array<{ wrapper_type: string; wrapper_status: string; metadata: Record<string, unknown> }>;
   }
 
-  // ---- PHASE 2 auth / users ----
+  // - PHASE 2 auth / users ----
 
   async createNonce(walletType: string, address: string, nonce: string, message: string, expiresAt: Date): Promise<void> {
     await this.pool.query(
@@ -314,7 +314,7 @@ export class Store {
     return { ...rows[0], wallets: await this.listWallets(userId) };
   }
 
-  // FIX2: sync Privy linked wallets into user_wallets for the authenticated user.
+  // sync Privy linked wallets into user_wallets for the authenticated user.
   async syncPrivyWallets(userId: string, privyUserId: string, wallets: Array<{ wallet_type: string; wallet_source?: string; chain: string; address: string; privy_wallet_id?: string }>): Promise<number> {
     let n = 0;
     for (const w of wallets) {
@@ -441,7 +441,7 @@ export class Store {
     await this.pool.query(`update ${table} set user_id=$2 where ${idColumn}=$1`, [id, userId]);
   }
 
-  // P2 #13 Shade View: fetch only the settlements/commitments the user owns —
+  // Shade View: fetch only the settlements/commitments the user owns —
   // silently drops ids that don't belong to them or don't exist, rather than
   // erroring, so a report never leaks another user's data through an id guess.
   async getOwnedSettlements(userId: string, settlementIds: string[]): Promise<Array<Record<string, unknown>>> {

@@ -1,5 +1,5 @@
 diff --git a/privacy-pools/cli/coinutils/src/cli/args.rs b/privacy-pools/cli/coinutils/src/cli/args.rs
-index 440aa84..9b54353 100644
+index 440aa84..bde99c7 100644
 --- a/privacy-pools/cli/coinutils/src/cli/args.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/args.rs
 @@ -18,6 +18,10 @@ pub enum Commands {
@@ -53,7 +53,7 @@ index 440aa84..9b54353 100644
      },
      /// Update association set
      UpdateAssociation {
-@@ -38,6 +75,34 @@ pub enum Commands {
+@@ -38,6 +75,46 @@ pub enum Commands {
          /// Label to add
          label: String,
      },
@@ -61,6 +61,18 @@ index 440aa84..9b54353 100644
 +    ComputeRoot {
 +        /// State file path (JSON with a `commitments` array of decimal field elements)
 +        state_file: String,
++    },
++    /// Generic Merkle inclusion proof for a leaf in a fixed-depth LeanIMT built
++    /// over a state file's `commitments` list. Prints JSON {root, leafIndex,
++    /// siblings}. Used to build compliance (allow/deny) witnesses off-chain.
++    MerkleProof {
++        /// State file path (JSON with a `commitments` array of decimal field elements)
++        state_file: String,
++        /// Index of the leaf to prove
++        leaf_index: u32,
++        /// Tree depth (default 2 = association/compliance depth)
++        #[arg(long, default_value = "2")]
++        depth: u32,
 +    },
 +    /// Build a hidden-amount PrivateTransfer witness (spend input -> output note + fee)
 +    Transfer {
@@ -89,7 +101,7 @@ index 440aa84..9b54353 100644
  
  impl Cli {
 diff --git a/privacy-pools/cli/coinutils/src/cli/commands.rs b/privacy-pools/cli/coinutils/src/cli/commands.rs
-index 92bf7f3..ae82d72 100644
+index 92bf7f3..5545302 100644
 --- a/privacy-pools/cli/coinutils/src/cli/commands.rs
 +++ b/privacy-pools/cli/coinutils/src/cli/commands.rs
 @@ -27,14 +27,16 @@ impl CommandHandler {
@@ -164,7 +176,7 @@ index 92bf7f3..ae82d72 100644
  
          // Save withdrawal data
          let withdrawal_json = self
-@@ -125,6 +153,57 @@ impl CommandHandler {
+@@ -125,6 +153,82 @@ impl CommandHandler {
          println!("Association set updated successfully");
          Ok(())
      }
@@ -177,6 +189,31 @@ index 92bf7f3..ae82d72 100644
 +        let state_data = self.file_manager.read_state_file(&state_file)?;
 +        let root = self.withdrawal_manager.compute_root(&env, &state_data)?;
 +        println!("{}", root);
++        Ok(())
++    }
++
++    /// Generic Merkle inclusion proof for `leaf_index` in a depth-`depth` LeanIMT
++    /// built over the state file's `commitments`. Prints {root, leafIndex,
++    /// siblings} as JSON (decimal field elements). Enables compliance
++    /// allow/deny-adjacency witnesses.
++    pub fn handle_merkle_proof(&self, state_file: String, leaf_index: u32, depth: u32) -> Result<()> {
++        use crate::crypto::conversions::{bls_scalar_to_decimal_string, decimal_string_to_bls_scalar};
++        use lean_imt::{LeanIMT, bls_scalar_to_bytes};
++        let env = Env::default();
++        env.cost_estimate().budget().reset_unlimited();
++        let state_data = self.file_manager.read_state_file(&state_file)?;
++        let mut tree = LeanIMT::new(&env, depth);
++        for c in state_data.commitments.iter() {
++            let fr = decimal_string_to_bls_scalar(&env, c)?;
++            tree.insert(bls_scalar_to_bytes(fr))?;
++        }
++        let (siblings, _d) = tree
++            .generate_proof(leaf_index)
++            .ok_or(crate::error::CoinUtilsError::ProofGenerationFailed)?;
++        let siblings_dec: Vec<String> = siblings.iter().map(|s| bls_scalar_to_decimal_string(&s)).collect();
++        let root = bls_scalar_to_decimal_string(&lean_imt::bytes_to_bls_scalar(&tree.get_root()));
++        let json = serde_json::json!({ "root": root, "leafIndex": leaf_index, "siblings": siblings_dec });
++        println!("{}", serde_json::to_string(&json).map_err(crate::error::CoinUtilsError::Json)?);
 +        Ok(())
 +    }
 +
@@ -334,10 +371,10 @@ index 45ad905..3e3a566 100644
          assert!(!result.coin.secret.is_empty());
          assert!(!result.coin.label.is_empty());
 diff --git a/privacy-pools/cli/coinutils/src/main.rs b/privacy-pools/cli/coinutils/src/main.rs
-index c920f69..ecf1060 100644
+index c920f69..9b68194 100644
 --- a/privacy-pools/cli/coinutils/src/main.rs
 +++ b/privacy-pools/cli/coinutils/src/main.rs
-@@ -11,17 +11,54 @@ fn main() {
+@@ -11,17 +11,55 @@ fn main() {
      let command_handler = CommandHandler::new();
  
      let result = match cli.command {
@@ -382,6 +419,7 @@ index c920f69..ecf1060 100644
              label,
          } => command_handler.handle_update_association(association_file, label),
 +        Commands::ComputeRoot { state_file } => command_handler.handle_compute_root(state_file),
++        Commands::MerkleProof { state_file, leaf_index, depth } => command_handler.handle_merkle_proof(state_file, leaf_index, depth),
 +        Commands::Transfer {
 +            coin_file,
 +            state_file,

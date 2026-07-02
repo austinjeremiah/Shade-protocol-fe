@@ -7,14 +7,14 @@ import { runMatchingRoundRemote, type NodeEndpoint } from "./remote-coordinator.
 import { runSettlerLoop } from "./settler.js";
 import { persistSignedBatch } from "./persist.js";
 
-// P4 #24: standalone coordinator — pairs with node-server.ts. Holds NO node
+// standalone coordinator — pairs with node-server.ts. Holds NO node
 // secret keys (unlike server.ts's combined dev/demo mode); every node
 // interaction is an authenticated HTTP call. Configure with:
-//   MPC_NODE_URLS        comma-separated node-id=url pairs, e.g.
-//                         "node-1=http://mpc-node-1:8091,node-2=http://mpc-node-2:8091,node-3=http://mpc-node-3:8091"
-//   MPC_INTERNAL_TOKEN    shared bearer token, must match every node's own
-//   MPC_BATCH_WINDOW_MS   auto-match timer interval (default 30s)
-//   DATABASE_URL          optional; enables batch persistence + the settler
+// MPC_NODE_URLS comma-separated node-id=url pairs, e.g.
+// "node-1=http://mpc-node-1:8091,node-2=http://mpc-node-2:8091,node-3=http://mpc-node-3:8091"
+// MPC_INTERNAL_TOKEN shared bearer token, must match every node's own
+// MPC_BATCH_WINDOW_MS auto-match timer interval (default 30s)
+// DATABASE_URL optional; enables batch persistence + the settler
 
 function parseNodeUrls(spec: string): NodeEndpoint[] {
   return spec.split(",").map(pair => {

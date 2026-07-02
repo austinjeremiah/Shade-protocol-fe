@@ -22,7 +22,7 @@ export const RELAYER_JOB_TYPES = [
   "RFQ_SETTLE_SUBMIT",       // submit an rfq_settle proof (admin/relayer-submitted)
   "CCTP_OUTBOUND_ATTESTATION", // poll Circle for the Stellar->Arbitrum burn attestation
   "CCTP_OUTBOUND_MINT",      // complete the Arbitrum mint (MessageTransmitter.receiveMessage)
-  "MPC_SETTLE_SUBMIT"        // Phase 8: submit committee-signed MPC match batch to the pool
+  "MPC_SETTLE_SUBMIT"        // submit committee-signed MPC match batch to the pool
 ] as const;
 
 export type RelayerJobType = (typeof RELAYER_JOB_TYPES)[number];
@@ -43,7 +43,7 @@ function parseEnvFile(env: EnvMap, path: string, override: boolean): void {
   }
 }
 // Mirror the CLI's loadRuntimeEnv: process.env wins for plain .env values, but
-// .env.generated (contract IDs) is authoritative and always overrides. The user
+// env.generated (contract IDs) is authoritative and always overrides. The user
 // wallet keys (ETH_PRIVATE_KEY etc.) live in the repo-parent .env.
 function loadEnv(): EnvMap {
   const env: EnvMap = { ...process.env } as EnvMap;
@@ -90,9 +90,9 @@ async function computeMpcRoot(
   const statePath = resolve(scratchPath, `mpc_root_${Date.now()}.json`);
   writeFileSync(statePath, JSON.stringify({ commitments: leaves, scope: "mpc_settle" }));
 
-  // P1 #10: a zero-root fallback here would silently poison TREE_ROOT_KEY and
+  // a zero-root fallback here would silently poison TREE_ROOT_KEY and
   // mark KnownRoot(0) on-chain, breaking every future withdrawal that builds
-  // on get_root(). A tooling failure must fail the job loudly instead.
+  // on get_root. A tooling failure must fail the job loudly instead.
   const out = execFileSync(coinutilsBin, ["compute-root", statePath], { encoding: "utf8" }).trim();
   return BigInt(out).toString(16).padStart(64, "0");
 }
@@ -175,7 +175,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
   }
 
   if (job.job_type === "CCTP_INBOUND_AFTER_USER_BURN") {
-    // FIX6: validate the USER's burn, then COMPLETE the Stellar side.
+    // validate the USER's burn, then COMPLETE the Stellar side.
     const { validateInboundBurnTx, runPostUserBurnCctpInbound } = await import("@shade/cctp");
     await queue.setStatus(job.job_id, "validating_burn", "verify user burn tx");
     const burnTxHash = String(p.burn_tx_hash);
@@ -206,7 +206,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
   }
 
   if (job.job_type === "MPC_SETTLE_SUBMIT") {
-    // Phase 8 + Phase C: MPC committee-matched settlement.
+    // + MPC committee-matched settlement.
     // 1. Verify threshold Ed25519 committee signatures over batchHash.
     // 2. Attempt ZK proof generation (MpcCircuitNotBuiltError → graceful fallback).
     // 3. Attempt pool.mpc_settle on-chain (spends both nullifiers, inserts output commitments).
@@ -251,8 +251,8 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
       signatures: sigs as import("@shade/mpc-crypto").NodeSignature[]
     };
 
-    // P0 #7: pin the committee from the on-chain registry (set via the pool's
-    // admin-only set_committee()), never from the signatures being checked —
+    // pin the committee from the on-chain registry (set via the pool's
+    // admin-only set_committee), never from the signatures being checked —
     // deriving the "expected" committee from the batch's own signatures makes
     // verification tautological (any self-consistent attacker keyset passes).
     if (!pool || !relayerSecret) throw new Error("MPC_SETTLE_SUBMIT missing SHIELDED_POOL_CONTRACT / STELLAR_RELAYER_SECRET to pin on-chain committee");
@@ -273,7 +273,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
     if (!valid) throw new Error(`MPC batch ${p.batchId}: signature verification failed (${sigs.length} sigs, need ≥2/3)`);
     await queue.setStatus(job.job_id, "verified_signatures", `batch ${p.batchId} — ${sigs.length} committee sigs valid`);
 
-    // Phase C: attempt ZK proof generation for the matched pair.
+    // attempt ZK proof generation for the matched pair.
     // MpcCircuitNotBuiltError is expected until `bash circuits/mpc_settlement/build.sh`
     // is run; in that case we fall back to committee-signature-only settlement.
     let zkProofHex: string | null = null;
@@ -351,7 +351,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
 
     const missingNote = !nullifierA || !nullifierB || !outCommitA || !outCommitB;
 
-    // P0 #7: mpc_settle must never be reported as settled without an actual
+    // mpc_settle must never be reported as settled without an actual
     // on-chain tx hash — a prior version returned `settled: true, onChain:
     // false` here, which downstream indexers/accounting could misread as a
     // completed settlement. Missing note data or a failed on-chain call are
@@ -360,7 +360,7 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
       throw new Error(`MPC batch ${p.batchId} match[${p.matchIndex}]: note data missing from DB — intent not submitted through API`);
     }
 
-    // B1 (spec §5.1): refuse to submit a proofless mpc_settle. If ZK proof
+    // (refuse to submit a proofless mpc_settle. If ZK proof
     // generation failed or the circuit artifacts are missing, fail the job
     // instead of submitting `proof_bytes = null` — the on-chain settle now
     // rejects proofless calls anyway (mandatory verifier), so this both avoids a

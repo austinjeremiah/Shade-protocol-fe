@@ -6,7 +6,7 @@ import {
 } from "@shade/mpc-crypto";
 import type { CommitteeState, SessionState } from "./state.js";
 
-// ---------- Matching algorithm ----------
+// ------- Matching algorithm ----------
 // Simple netting: pair intents with complementary amounts (same asset pair, close amounts).
 // In production this would be a full price-time priority order book.
 
@@ -26,7 +26,7 @@ export function matchIntents(
 
   // Within each group, sort by amount ascending and try to match complementary pairs.
   // "Complementary" means: intent A wants to send X of assetA for assetB,
-  //  intent B wants to send X of assetB for assetA.
+  // intent B wants to send X of assetB for assetA.
   for (const [key, group] of groups.entries()) {
     const [inAsset, outAsset] = key.split("|");
     const reverseKey = `${outAsset}|${inAsset}`;
@@ -42,7 +42,7 @@ export function matchIntents(
     while (ai < sorted.length && bi < reverseSorted.length) {
       const a = sorted[ai];
       const b = reverseSorted[bi];
-      // B5.3 (spec §5.3.3): only advance the side that's actually already used —
+      // 3 (only advance the side that's actually already used —
       // advancing both unconditionally can skip a still-unused, otherwise-valid
       // counterparty. Also skip a self-pairing: for a same-asset group the
       // reverse group IS this group, so a[ai] and b[bi] can be the SAME intent;
@@ -69,12 +69,12 @@ export function matchIntents(
   return matches;
 }
 
-// ---------- Phase 6: priced cross-asset matching (spec §10.4) ----------
+// ------- priced cross-asset matching (spec ----------
 // Match a party spending assetX (wanting assetY) with a party spending assetY
 // (wanting assetX) at a single fixed price, no partial fills. A crossing exists
 // when the assetX-seller's ask price <= the assetY-seller's implied bid, i.e. the
 // amounts are consistent with ONE priceScaled within the floor rounding rule:
-//   amountY == floor(amountX * priceScaled / PRICE_SCALE).
+// amountY == floor(amountX * priceScaled / PRICE_SCALE).
 // PRICE_SCALE = 1e9.
 
 const PRICE_SCALE = 1_000_000_000n;
@@ -160,7 +160,7 @@ export function matchPricedIntents(intents: PricedIntent[]): PricedMatch[] {
   return out;
 }
 
-// ---------- Coordinator ----------
+// ------- Coordinator ----------
 
 export type CoordinatorResult =
   | { ok: true; batch: SignedMatchBatch }

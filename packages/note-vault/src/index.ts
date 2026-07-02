@@ -1,12 +1,10 @@
 // @shade/note-vault — browser-safe note vault crypto (WebCrypto only).
-//
 // Security model (see docs/note-vault-recovery.md):
-//  - a random 256-bit `vault_master_key` (never derived from an EVM signature)
-//    encrypts the note vault with AES-256-GCM bound to AAD;
-//  - the master key is WRAPPED (not stored) by recovery methods (passkey PRF,
-//    Stellar Ed25519 signature, recovery-kit passphrase; EVM is diagnostic-only);
-//  - the backend stores only ciphertext + wrapped keys and must reject plaintext.
-//
+// a random 256-bit `vault_master_key` (never derived from an EVM signature)
+// encrypts the note vault with AES-256-GCM bound to AAD;
+// the master key is WRAPPED (not stored) by recovery methods (passkey PRF,
+// Stellar Ed25519 signature, recovery-kit passphrase; EVM is diagnostic-only);
+// the backend stores only ciphertext + wrapped keys and must reject plaintext.
 // No node:crypto. Uses globalThis.crypto.subtle (present in browsers and Node 18+).
 
 const subtle = globalThis.crypto.subtle;
@@ -17,7 +15,7 @@ const td = new TextDecoder();
 // SharedArrayBuffer union in the strict lib typings.
 const bs = (u?: Uint8Array): BufferSource | undefined => u as unknown as BufferSource;
 
-// ---------- encoding helpers (browser + node safe) ----------
+// ------- encoding helpers (browser + node safe) ----------
 export function toB64(bytes: Uint8Array): string {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
@@ -38,7 +36,7 @@ export function randomBytes(n: number): Uint8Array {
   return b;
 }
 
-// ---------- types ----------
+// ------- types ----------
 export type VaultMasterKey = Uint8Array; // 32 raw bytes
 export type NotePreimage = {
   owner_secret: string;
@@ -87,7 +85,7 @@ export type EncryptedVaultEnvelope = {
   wrappers: VaultWrapper[];
 };
 
-// ---------- core crypto ----------
+// ------- core crypto ----------
 async function aesKey(raw: Uint8Array): Promise<CryptoKey> {
   return subtle.importKey("raw", bs(raw)!, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
@@ -122,7 +120,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return toHex(new Uint8Array(await subtle.digest("SHA-256", bs(bytes)!)));
 }
 
-// ---------- vault construction ----------
+// ------- vault construction ----------
 export function generateVaultMasterKey(): VaultMasterKey {
   return randomBytes(32);
 }
@@ -181,7 +179,7 @@ export async function decryptEnvelope(env: EncryptedVaultEnvelope, masterKey: Va
   return decryptNoteVault(env.ciphertext, env.cipher.iv, masterKey, env.aad);
 }
 
-// ---------- security gates ----------
+// ------- security gates ----------
 const PLAINTEXT_FORBIDDEN = ["owner_secret", "spend_secret", "blinding", "nonce", "note_preimage", "vault_master_key", "raw_signature", "private_key", "secret"];
 export function assertNoPlaintextNoteFields(obj: unknown): void {
   const walk = (v: unknown): void => {
@@ -210,7 +208,7 @@ export function redactVaultForLogs(obj: unknown): unknown {
   return walk(obj);
 }
 
-// ---------- recovery wrappers ----------
+// ------- recovery wrappers ----------
 async function wrapWithKey(wrappingKey: Uint8Array, masterKey: VaultMasterKey): Promise<string> {
   const { iv, ct } = await aesGcmEncrypt(wrappingKey, masterKey);
   const blob = new Uint8Array(iv.length + ct.length);
@@ -307,7 +305,7 @@ export function diagnosticVerifyEvmSignatureStability(sigA: Uint8Array, sigB: Ui
   return sigA.length === sigB.length && sigA.every((b, i) => b === sigB[i]);
 }
 
-// ---------- recovery policy ----------
+// ------- recovery policy ----------
 export type RecoveryPolicyStatus = "insufficient" | "sufficient" | "strong";
 export function evaluateRecoveryPolicy(wrappers: VaultWrapper[], opts: { mainnet: boolean; min: number; allowEvmOnly: boolean }): RecoveryPolicyStatus {
   const active = wrappers.filter((w) => w.status === "active");

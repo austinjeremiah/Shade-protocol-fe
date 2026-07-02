@@ -13,7 +13,7 @@ const commands = [
   ["root-auditor:test", ["run", "root-auditor:test"]]
 ] as const;
 
-// P1.11: one fresh report for the whole suite; children append to it via the
+// one fresh report for the whole suite; children append to it via the
 // shared run id (they don't reset it).
 const runId = randomUUID();
 beginReport({ runId });

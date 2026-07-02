@@ -6,14 +6,13 @@ import {
 import type { SessionState } from "./state.js";
 import { matchIntents, type CoordinatorResult } from "./coordinator.js";
 
-// P4 #24: the network-only counterpart to coordinator.ts::runMatchingRound.
+// the network-only counterpart to coordinator.ts::runMatchingRound.
 // This coordinator holds NO node secret keys — it only ever talks to nodes
 // over HTTP (POST /internal/decrypt, POST /internal/sign-batch), each
 // authenticated with a shared bearer token. A single compromised coordinator
 // process can no longer leak any node's signing/encryption key, only
 // whatever it legitimately reconstructs during an active matching round
-// (the P2 #16 trusted-matcher limitation, unchanged and separately tracked).
-//
+// (the trusted-matcher limitation, unchanged and separately tracked).
 // Fault-tolerant by design: with threshold = ceil(2n/3), losing ONE of three
 // nodes must not stop settlement. Every node call below is best-effort
 // (timeout + catch -> null) and the round only fails if fewer than

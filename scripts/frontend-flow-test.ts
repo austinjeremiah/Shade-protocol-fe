@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// FIX12 frontend-flow test: static assertions that the web flow is real (not a
+// frontend-flow test: static assertions that the web flow is real (not a
 // stub). The full live browser e2e is Playwright (P1, NOT RUN here); this guards
 // the source against regressing to the audited-failed states.
 
@@ -15,7 +15,7 @@ const restore = read("apps/web/src/app/restore/page.tsx");
 const vault = read("apps/web/src/app/vault/page.tsx");
 
 // Deposit
-// real prompt() calls only — ignore lines that are // comments
+// real prompt calls only — ignore lines that are // comments
 check("deposit: no prompt() burn-hash entry", !deposit.split("\n").some((l) => /\bprompt\(/.test(l) && !l.trim().startsWith("//")));
 check("deposit: sends approve (encodeFunctionData approve)", /functionName:\s*"approve"/.test(deposit));
 check("deposit: sends CCTP burn (depositForBurnWithHook)", /depositForBurnWithHook/.test(deposit) && /sendTransaction/.test(deposit));

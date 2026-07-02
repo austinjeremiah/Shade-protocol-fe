@@ -27,8 +27,8 @@ pub fn bytes_to_bls_scalar(bytes_n: &BytesN<32>) -> BlsScalar {
 }
 
 /// Lean Incremental Merkle Tree implementation with hybrid approach:
-/// - Internal computation uses BlsScalar for perfect Circom compatibility
-/// - Storage and API uses BytesN<32> for Soroban compatibility
+/// Internal computation uses BlsScalar for perfect Circom compatibility
+/// Storage and API uses BytesN<32> for Soroban compatibility
 pub struct LeanIMT {
     env: Env,
     leaves: Vec<BytesN<32>>,
@@ -37,9 +37,9 @@ pub struct LeanIMT {
     root: BytesN<32>,
     // Hybrid cache system:
     // 1. subtree_cache: Dynamic programming cache for empty tree levels
-    //    Key: level -> Value: hash of subtrees at that level (all identical for empty trees)
+    // Key: level -> Value: hash of subtrees at that level (all identical for empty trees)
     // 2. sparse_cache: Sparse storage for nodes updated due to leaf insertions
-    //    Key: (level, node_index) -> Value: computed hash for specific nodes
+    // Key: (level, node_index) -> Value: computed hash for specific nodes
     subtree_cache: Map<u32, BlsScalar>,
     sparse_cache: Map<(u32, u32), BlsScalar>,
 }
@@ -206,11 +206,9 @@ impl LeanIMT {
 
     /// Incremental update using path recomputation (Clever shortcut 2)
     /// Only recomputes the path from the new leaf to the root
-    ///
     /// This implements the optimization described in Tornado Cash:
     /// "all subtrees to the left of the newest member consist of subtrees
     /// whose roots can be cached rather than recalculated"
-    ///
     /// Now with full memoization - we only recompute the specific path from the new leaf to root,
     /// and update the cache as we go.
     fn incremental_update(&mut self) {
@@ -473,7 +471,6 @@ impl LeanIMT {
 
     /// Demonstrates the "Clever shortcut 2" optimization concept
     /// Shows which subtrees would be reused vs recomputed for a new leaf
-    ///
     /// This method analyzes the path from a new leaf to the root and identifies
     /// which sibling subtrees could be cached (left of current position) vs
     /// which need to be computed (right of current position).

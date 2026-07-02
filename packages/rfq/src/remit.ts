@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-// Phase 7 (spec §11.3): SIMULATED remittance. This is a mock SEP-38-style payout
+// (SIMULATED remittance. This is a mock SEP-38-style payout
 // flow — NO real fiat is moved and no real anchor is contacted. It exists to
 // exercise the binding: a remit settlement commits to the quote amount, currency,
 // recipient metadata commitment, expiry, anchor id, and policy id, and produces a
@@ -23,7 +23,7 @@ function sha256(s: string): string {
 }
 
 // Commitment to the recipient's payout metadata — the raw metadata is never bound
-// directly, only its commitment (§11.3 "payout metadata commitment bound").
+// directly, only its commitment ("payout metadata commitment bound").
 export function recipientMetadataCommitment(metadata: string, blindingHex: string): string {
   return "0x" + sha256(`${metadata}|${blindingHex}`);
 }

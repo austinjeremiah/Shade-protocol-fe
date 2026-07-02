@@ -15,8 +15,8 @@ export type EncryptedShare = {
   senderPubkey: string;
 };
 
-// Blinding values retained by the client after buildPrivateIntent().
-// Required for Phase C ZK proof (proves amount_commitment = hash(amount, blinding)).
+// Blinding values retained by the client after buildPrivateIntent.
+// Required for ZK proof (proves amount_commitment = hash(amount, blinding)).
 export type IntentBlindings = {
   amountBlinding: string;
   minOutputBlinding: string;
@@ -27,7 +27,7 @@ export type IntentParams = {
   inputAsset: string;
   outputAsset: string;
   amountMode: "exact_in" | "exact_out" | "max_in";
-  amount7dp: string;           // plaintext 7dp or amount_commitment when built via buildPrivateIntent()
+  amount7dp: string;           // plaintext 7dp or amount_commitment when built via buildPrivateIntent
   minOutput7dp: string;
   expiryLedger: number;
   noteCommitment: string;      // 0x.. Poseidon commitment of the deposited input note
@@ -43,7 +43,7 @@ export type IntentParams = {
 };
 
 // Parameters for the full private-intent construction pipeline.
-// The plaintext amount never leaves buildPrivateIntent() — only commitments
+// The plaintext amount never leaves buildPrivateIntent — only commitments
 // and encrypted Shamir shares are included in the submitted payload.
 export type PrivateIntentBuildParams = {
   amount7dp: bigint;
@@ -111,7 +111,7 @@ export class IntentClient {
     return res.json() as Promise<T>;
   }
 
-  // Fetch the MPC committee's public keys. Required before buildPrivateIntent().
+  // Fetch the MPC committee's public keys. Required before buildPrivateIntent.
   async fetchCommittee(): Promise<CommitteeNodeInfo[]> {
     const data = await this.get<{ nodes: CommitteeNodeInfo[] }>("/v1/mpc/committee");
     return data.nodes;

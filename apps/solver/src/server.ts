@@ -8,7 +8,7 @@ import { LOCKED_CCTP, ERC20_ABI } from "@shade/cctp-utils";
 import { type Quote, quoteHash, signQuoteStellar, priceQuote, usdc7ToDecimal } from "@shade/rfq";
 
 // PHASE 2 solver service. Quote-signing is ed25519 over the quote hash (the
-// canonical scheme the on-chain `rfq_settle` verifies, plus the C4 authorized-
+// canonical scheme the on-chain `rfq_settle` verifies, plus the authorized-
 // solver registry) — NOT EVM signatures. The solver keeps real Arbitrum Sepolia
 // USDC inventory, refuses quotes it cannot cover, signs with its Stellar key, and
 // exposes inventory/health for the API and operators.

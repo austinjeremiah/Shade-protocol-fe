@@ -69,7 +69,7 @@ export function stellar7ToUsdc6(amount7: bigint): bigint {
   return amount7 / 10n;
 }
 
-// --- CCTP V2 burn (Arbitrum Sepolia) -----------------------------------------
+// CCTP V2 burn (Arbitrum Sepolia) -----------------------------------------
 // TokenMessengerV2.depositForBurnWithHook, verified against
 // circlefin/evm-cctp-contracts master src/v2/TokenMessengerV2.sol
 export const TOKEN_MESSENGER_V2_ABI = [
@@ -97,7 +97,7 @@ export type CctpAttestation = {
 };
 
 // Circle Iris V2 message lookup by source tx hash.
-// https://developers.circle.com/cctp  (sandbox base for testnet)
+// https://developers.circle.com/cctp (sandbox base for testnet)
 export async function fetchAttestationByTx(
   apiBase: string,
   sourceDomain: number,

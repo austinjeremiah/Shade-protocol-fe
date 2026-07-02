@@ -57,7 +57,7 @@ ok(`Committee nodes: ${nodes.map(n => n.nodeId).join(", ")}`);
 
 // 3. Create two crossing intents with real Shamir-encrypted shares
 const amountA = 5_000_000_0n; // 500 USDC (7dp)
-const amountB = 5_000_000_0n; // 500 XLM  (7dp)
+const amountB = 5_000_000_0n; // 500 XLM (7dp)
 const intentAId = uuidv4();
 const intentBId = uuidv4();
 

@@ -76,7 +76,7 @@ export const cctpExitSchema = z.object({
   relayer_fee: z.string().regex(/^\d+$/)
 });
 
-// ---- PHASE 2 auth / user schemas ----
+// - PHASE 2 auth / user schemas ----
 
 export const authNonceSchema = z.object({
   wallet_type: z.enum(["EVM", "STELLAR"]),
@@ -114,7 +114,7 @@ export const requestQuotesSchema = z.object({
   expiry_ledger: z.number().int().positive().optional()
 });
 
-// ---- PHASE 4 note-vault schemas ----
+// - PHASE 4 note-vault schemas ----
 
 const vaultWrapperSchema = z.object({
   id: z.string(),
@@ -143,7 +143,7 @@ export const addWrapperSchema = z.object({
   envelope: encryptedVaultEnvelopeSchema
 });
 
-// ---- PHASE 6 user-signed CCTP deposit ----
+// - PHASE 6 user-signed CCTP deposit ----
 
 // The user's wallet signs the burn; the backend never holds the user EVM key.
 export const userDepositPrepareSchema = z.object({
@@ -162,7 +162,7 @@ export const burnSubmittedSchema = z.object({
   source_wallet_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/)
 });
 
-// FIX2: Privy linked-wallet sync. EVM 0x… (40 hex) or Stellar G… (56 base32).
+// Privy linked-wallet sync. EVM 0x… (40 hex) or Stellar G… (56 base32).
 export const syncPrivyWalletsSchema = z.object({
   wallets: z.array(z.object({
     wallet_type: z.enum(["EVM", "STELLAR"]),
@@ -178,7 +178,7 @@ export const noteRecoverSchema = z.object({
   vault_id: z.string().min(1).optional()
 });
 
-// FIX3: real backup verification — client must send a non-empty proof-of-decrypt.
+// real backup verification — client must send a non-empty proof-of-decrypt.
 export const verifyBackupSchema = z.object({
   verification: z.object({
     vault_id: z.string().min(1),
@@ -189,7 +189,7 @@ export const verifyBackupSchema = z.object({
   })
 });
 
-// P2 #13 Shade View: user selects which of THEIR OWN settlements/notes to
+// Shade View: user selects which of THEIR OWN settlements/notes to
 // disclose. Ownership is re-checked server-side (settlement_ids/commitments
 // must belong to the authenticated user) — this schema only validates shape.
 export const viewKeyReportSchema = z.object({

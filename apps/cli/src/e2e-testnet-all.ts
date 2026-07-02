@@ -4,13 +4,12 @@ import { randomUUID } from "node:crypto";
 import { beginReport } from "./lib/report.js";
 
 // `npm run e2e:testnet:all` — the single reproducible testnet acceptance command
-// required by shade_testnet_e2e_agent_build_spec.md §0.7 / §12.
-//
-// It executes the full functional + adversarial scenario matrix from spec §12.2
-// and §12.3. Scenarios whose implementation is not yet complete are reported with
-// an explicit NOT_IMPLEMENTED code (spec §4.5) rather than silently passing — the
+// required by shade_testnet_e2e_agent_build_spec.md /
+// It executes the full functional + adversarial scenario matrix from spec
+// and Scenarios whose implementation is not yet complete are reported with
+// an explicit NOT_IMPLEMENTED code (spec rather than silently passing — the
 // command fails with a clear incomplete-task list until every required scenario
-// is green. There is NO mock-success fallback (spec §0.3).
+// is green. There is NO mock-success fallback (spec .
 
 type Status = "PASS" | "FAIL" | "NOT_IMPLEMENTED" | "SKIPPED_NO_TESTNET";
 
@@ -22,7 +21,7 @@ type Scenario = {
   // `command` is the npm script that proves this scenario on testnet. When null,
   // the scenario is not yet implemented and is reported NOT_IMPLEMENTED.
   command: string | null;
-  optional?: boolean; // e.g. MPC priced cross-asset (spec §12.2.9)
+  optional?: boolean; // e.g. MPC priced cross-asset (spec
 };
 
 // Whether real testnet credentials/contracts are configured. Without them the
@@ -36,7 +35,7 @@ const TESTNET_READY = Boolean(
 // Scenario matrix. `command: null` == not yet implemented. As each phase lands,
 // wire the command that asserts real testnet state.
 const SCENARIOS: Scenario[] = [
-  // ---- Functional (spec §12.2) ----
+  // - Functional (spec ----
   { id: "F1", phase: "4", name: "CCTP inbound -> private USDC note", kind: "functional", command: null },
   { id: "F2", phase: "2", name: "private USDC note -> public Stellar USDC withdraw", kind: "functional", command: null },
   { id: "F3", phase: "3", name: "RFQ USDC->XLM public XLM >= min_output", kind: "functional", command: null },
@@ -47,7 +46,7 @@ const SCENARIOS: Scenario[] = [
   { id: "F8", phase: "7", name: "Recovery: wipe client -> recover notes", kind: "functional", command: null },
   { id: "F9", phase: "6", name: "MPC priced cross-asset USDC<->XLM", kind: "functional", command: null },
 
-  // ---- Adversarial (spec §12.3) ----
+  // - Adversarial (spec ----
   { id: "A1", phase: "4", name: "duplicate CCTP nonce -> no second note", kind: "adversarial", command: null },
   { id: "A2", phase: "3", name: "expired quote -> rejected", kind: "adversarial", command: null },
   { id: "A3", phase: "4", name: "relayer changes destination -> rejected", kind: "adversarial", command: null },
@@ -121,7 +120,7 @@ appendFileSync(reportFile, `\n${summary}\n`);
 console.log(summary);
 
 // Exit non-zero unless EVERY required scenario is PASS. Until all phases land,
-// this fails with a clear incomplete list (spec §4.5). SKIPPED_NO_TESTNET also
+// this fails with a clear incomplete list (spec . SKIPPED_NO_TESTNET also
 // fails the gate — the acceptance suite must assert real testnet state.
 if (hardFail || notImplemented > 0 || skipped > 0) {
   const reasons: string[] = [];

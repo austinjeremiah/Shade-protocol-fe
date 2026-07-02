@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import { registerRoutes } from "./routes.js";
 import { JobQueue } from "@shade/queue";
 
-// FIX7/FIX12: assert every user-owned state-changing route 401s without a token.
+// /assert every user-owned state-changing route 401s without a token.
 // (Public routes /health /v1/config /v1/contracts /v1/health/full are NOT listed.)
 const STATE_CHANGING: Array<[string, string]> = [
   ["POST", "/v1/me/wallets/sync-privy"],

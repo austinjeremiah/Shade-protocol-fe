@@ -56,7 +56,7 @@ export type AddNoteParams = {
 
 export class NoteManager {
   // Generate a fresh random note preimage (secrets). The caller submits this to the
-  // prover to obtain the protocol Poseidon commitment, then calls addNote().
+  // prover to obtain the protocol Poseidon commitment, then calls addNote.
   static generatePreimage(): NotePreimage {
     return generateNotePreimage();
   }

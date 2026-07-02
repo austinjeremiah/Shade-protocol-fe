@@ -41,7 +41,7 @@ const userArbAddr = new Wallet(env.ARB_SEPOLIA_PRIVATE_KEY ?? env.ETH_PRIVATE_KE
 const usdcArb = new Contract(env.ARB_SEPOLIA_USDC_ADDRESS ?? LOCKED_CCTP.arbitrumSepoliaUsdc, ERC20_ABI, solverArb);
 
 // 0) Ensure the solver's USDC trustline exists up front, well before settlement
-//    (the SAC credit to the solver requires it; do it before the multi-minute CCTP wait).
+// (the SAC credit to the solver requires it; do it before the multi-minute CCTP wait).
 try {
   await createTrustline(solverStellarSecret, env.STELLAR_TESTNET_USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5");
   results.push({ name: "solver USDC trustline", ok: true, detail: "established" });
@@ -116,8 +116,8 @@ mark("QUOTE_RECEIVED", `quote ${quote.quote_id.slice(0, 8)} net ${quote.net_outp
 mark("QUOTE_VALIDATED", `quote_hash ${qHash.slice(0, 14)}...`);
 results.push({ name: "solver signed quote (ed25519)", ok: sig.sig.length === 128, detail: `sig 64B over quote_hash` });
 
-// C4: solver onboarding — the pool admin authorizes the solver's ed25519 pubkey.
-// rfq_settle rejects quotes signed by any non-authorized key (#23 UnauthorizedSolver).
+// solver onboarding — the pool admin authorizes the solver's ed25519 pubkey.
+// rfq_settle rejects quotes signed by any non-authorized key (UnauthorizedSolver).
 sorobanInvoke({ contractId: pool, secret: poolAdminSecret, method: "set_authorized_solver",
   args: ["--solver_pubkey", sig.pubkey, "--allowed", "true"], rpcUrl: rpc, passphrase: pass });
 results.push({ name: "C4 solver pubkey authorized on-chain (registry)", ok: true, detail: `solver ${sig.pubkey.slice(0, 12)}... allowed` });
@@ -141,12 +141,12 @@ const userUsdcAfter = (await usdcArb.balanceOf(userArbAddr)) as bigint;
 mark("FILL_EXECUTED_IF_REQUIRED", `fill tx ${fillTxHash}`);
 results.push({ name: "real Arbitrum fill executed", ok: userUsdcAfter - userUsdcBefore === fillAmount6, detail: `${fillTxHash} (+${fillAmount6} 6dp to user)` });
 
-// P1.6 fill-receipt hash (32-byte sha256 of the real Arbitrum fill tx hash).
+// fill-receipt hash (32-byte sha256 of the real Arbitrum fill tx hash).
 const fillReceiptHashHex = createHash("sha256").update(fillTxHash).digest("hex");
 
-// 8) Build the user note-ownership proof with FULL RFQ-term binding (P1.6):
-//    operation_type=3 (RFQ_SETTLEMENT), fee, deadline, and the quote/intent/fill
-//    hashes are bound into the proof so the relayer cannot mutate accepted terms.
+// 8) Build the user note-ownership proof with FULL RFQ-term binding (
+// operation_type=3 (RFQ_SETTLEMENT), fee, deadline, and the quote/intent/fill
+// hashes are bound into the proof so the relayer cannot mutate accepted terms.
 mark("PROOF_REQUESTED");
 const rfqDeadlineLedger = String(intent.expiry_ledger);
 const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_rfq", SCRATCH, "rfq", assoc.assocPath, {
@@ -164,9 +164,9 @@ results.push({ name: "circuit stateRoot == on-chain pool root", ok: rootMatch, d
 results.push({ name: "RFQ settlement proof locally verified", ok: proof.locallyVerified, detail: proof.locallyVerified ? "OK" : "FAILED" });
 mark("PROOF_VERIFIED_LOCALLY");
 
-// 8b) NEGATIVE (P1.6): a relayer swaps in a DIFFERENT but validly-signed quote.
-//     The solver sig over the swapped quote_hash passes ed25519, but the proof
-//     binds the ORIGINAL quote, so the contract must reject with WrongQuote (#14).
+// 8b) NEGATIVE (a relayer swaps in a DIFFERENT but validly-signed quote.
+// The solver sig over the swapped quote_hash passes ed25519, but the proof
+// binds the ORIGINAL quote, so the contract must reject with WrongQuote (.
 const swappedQuote: Quote = { ...quote, quote_id: uuid(), net_output: usdc7ToDecimal(gross7) };
 const swappedQHash = quoteHash(swappedQuote);
 const swappedSig = signQuoteStellar(swappedQHash, solverStellarSecret);
@@ -181,9 +181,9 @@ try {
 const wrongQuoteCode = /#14|WrongQuote/.test(bindingErr);
 results.push({ name: "P1.6 relayer cannot swap accepted quote (proof binds quote_hash)", ok: bindingRejected, detail: bindingRejected ? (wrongQuoteCode ? "rejected Error(Contract, #14) WrongQuote" : `rejected: ${bindingErr.slice(0, 80)}`) : "NOT rejected!" });
 
-// 8c) NEGATIVE (C4): an UNauthorized solver key signs the real quote. The
-//     ed25519 sig is valid, but the key is not in the on-chain solver registry,
-//     so the contract must reject with UnauthorizedSolver (#23).
+// 8c) NEGATIVE (an UNauthorized solver key signs the real quote. The
+// ed25519 sig is valid, but the key is not in the on-chain solver registry,
+// so the contract must reject with UnauthorizedSolver (.
 const rogueSecret = Keypair.random().secret();
 const rogueSig = signQuoteStellar(qHash, rogueSecret);
 let solverRejected = false; let solverErr = "";
@@ -197,7 +197,7 @@ try {
 results.push({ name: "C4 unauthorized solver rejected (on-chain solver registry)", ok: solverRejected, detail: solverRejected ? (/#23|UnauthorizedSolver/.test(solverErr) ? "rejected Error(Contract, #23) UnauthorizedSolver" : `rejected: ${solverErr.slice(0, 80)}`) : "NOT rejected!" });
 
 // 9) Settle on Stellar: verify proof + solver sig, spend nullifier, credit solver.
-//    (Solver USDC trustline was ensured at the top of the run; long since propagated.)
+// (Solver USDC trustline was ensured at the top of the run; long since propagated.)
 mark("SETTLEMENT_SUBMITTED");
 const poolBalBefore = BigInt(poolRead("usdc_balance"));
 const settle = sorobanInvoke({

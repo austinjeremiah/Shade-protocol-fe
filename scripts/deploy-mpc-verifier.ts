@@ -3,18 +3,15 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-// Phase C: deploy the mpc_settlement Groth16 verifier and wire it to the shielded pool.
-//
+// deploy the mpc_settlement Groth16 verifier and wire it to the shielded pool.
 // Prerequisites:
-//   1. bash circuits/mpc_settlement/build.sh   — produces main_verification_key.json
-//   2. npm run contracts:build                  — shielded_pool.wasm must include mpc_settle
-//                                                 with proof_bytes + pub_signals_bytes params
-//
+// 1. bash circuits/mpc_settlement/build.sh — produces main_verification_key.json
+// 2. npm run contracts:build — shielded_pool.wasm must include mpc_settle
+// with proof_bytes + pub_signals_bytes params
 // What this script does:
-//   a) Deploys a new ProofVerifier instance initialized with the mpc_settlement VK.
-//   b) Calls pool.set_mpc_verifier(verifier) — once set, mpc_settle() requires a ZK proof.
-//   c) Writes MPC_VERIFIER_CONTRACT to .env.generated.
-//
+// a) Deploys a new ProofVerifier instance initialized with the mpc_settlement VK.
+// b) Calls pool.set_mpc_verifier(verifier) — once set, mpc_settle requires a ZK proof.
+// c) Writes MPC_VERIFIER_CONTRACT to .env.generated.
 // Run: npm run deploy:mpc:verifier
 // To skip re-deploy when already set: the script re-uses MPC_VERIFIER_CONTRACT if present.
 
@@ -76,7 +73,7 @@ console.log(`Wiring pool.set_mpc_verifier(${env.MPC_VERIFIER_CONTRACT})…`);
 invoke(deployer, pool, ["set_mpc_verifier", "--verifier", env.MPC_VERIFIER_CONTRACT]);
 console.log("Pool wired: mpc_settle now requires a Groth16 proof alongside committee sigs.");
 
-// Phase 6: deploy + wire the mpc_priced_settlement verifier for cross-asset MPC.
+// deploy + wire the mpc_priced_settlement verifier for cross-asset MPC.
 const pvkPath = resolve(SHADE_ROOT, "circuits/mpc_priced_settlement/output/main_verification_key.json");
 if (existsSync(pvkPath)) {
   if (!env.MPC_PRICED_VERIFIER_CONTRACT) {
@@ -101,7 +98,7 @@ if (existsSync(pvkPath)) {
 
 console.log("Phase C deploy PASS");
 
-// ---- helpers ----
+// - helpers ----
 
 function wasmHash(secret: string, wasmPath: string): string {
   if (!existsSync(wasmPath)) throw new Error(`missing ${wasmPath}; run npm run contracts:build`);

@@ -14,8 +14,7 @@ function scratchDir(): string {
   return SHADE_SCRATCH_DIR;
 }
 
-// P1.9 Root Auditor core.
-//
+// Root Auditor core.
 // Trust model: the registrar (pool admin) computes the lean-imt Merkle root
 // off-chain and submits it with each deposit (on-chain Poseidon inserts exceed the
 // Soroban budget — see docs). The contract EMITS every commitment in a `deposit`
@@ -100,9 +99,9 @@ export async function readDepositLeavesFromEvents(poolContract: string, rpcUrl: 
 // Pure comparison: recompute the root over the committed leaves and compare to the
 // on-chain `get_root`. The protocol supports two registrar conventions for the
 // pool's current root, and an honest registrar matches ONE of them:
-//   (a) cumulative — root over ALL committed leaves in order;
-//   (b) per-deposit — root over only the latest deposited leaf (the cctp-inbound
-//       flow submits computeStateRoot over the new coin alone).
+// (a) cumulative — root over ALL committed leaves in order;
+// (b) per-deposit — root over only the latest deposited leaf (the cctp-inbound
+// flow submits computeStateRoot over the new coin alone).
 // A match against either is OK. A root matching NEITHER (wrong/tampered root, or a
 // swapped leaf) is ROOT_MISMATCH_CRITICAL. This still catches fraud: a forged root
 // or altered leaf set matches neither recomputation.

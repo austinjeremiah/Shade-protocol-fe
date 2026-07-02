@@ -8,7 +8,7 @@ export type CheckResult = {
   detail: string;
 };
 
-// P1.11: the canonical report is regenerated fresh per run (no stale FAIL
+// the canonical report is regenerated fresh per run (no stale FAIL
 // accumulation). The previous report is archived under docs/reports/<ts>.md.
 const GENERATED = process.env.SHADE_REPORT_FILE ?? "docs/test-report.generated.md";
 const ARCHIVE_DIR = "docs/reports";

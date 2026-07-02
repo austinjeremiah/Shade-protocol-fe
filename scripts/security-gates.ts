@@ -39,10 +39,10 @@ const gates: Gate[] = [
     cmd: `grep -rn "ENABLE_OPERATOR_TESTNET_DEPOSIT" apps/relayer/src/worker.ts || echo MISSING_GATE`,
     // here a MATCH is REQUIRED; invert below
   },
-  // FIX11 audit2: deeper behavioral gates.
+  // audit2: deeper behavioral gates.
   {
     name: "deposit page has NO paste-burn-hash prompt",
-    // match real prompt() calls, not the word in a // comment
+    // match real prompt calls, not the word in a // comment
     cmd: `grep -rn 'prompt(' apps/web/src/app/deposit/page.tsx | grep -v '^[^:]*:[0-9]*://' || true`
   },
   {
@@ -67,7 +67,7 @@ const gates: Gate[] = [
     cmd: `grep -q "verifyBackupSchema.parse" apps/api/src/routes.ts && echo "" || echo VERIFY_NO_SCHEMA`
   },
   {
-    // FIX10/FIX11: blockers.md must not BOTH claim Phase-2 DONE and list the same
+    // /blockers.md must not BOTH claim Phase-2 DONE and list the same
     // work as remaining/in-progress. We allow the historical "P0 FIXES APPLIED"
     // heading but forbid a bare "PRODUCT wallet architecture ... — DONE".
     name: "docs: no Phase-2 DONE/remaining contradiction",
@@ -76,8 +76,8 @@ const gates: Gate[] = [
   // audit3 PART13 gates.
   {
     name: "vault page is not password-first (no prompt before securing)",
-    // the only prompt() allowed is inside the Advanced password handler; the default
-    // createVault path must not call prompt(). Fail if prompt appears before the
+    // the only prompt allowed is inside the Advanced password handler; the default
+    // createVault path must not call prompt. Fail if prompt appears before the
     // "Advanced" marker line.
     cmd: `awk '/async function addPasswordRecovery/{adv=1} /\\bprompt\\(/ && !adv && $0 !~ /^[[:space:]]*\\/\\// {print FILENAME":"NR": "$0}' apps/web/src/app/vault/page.tsx || true`
   },
@@ -94,7 +94,7 @@ const gates: Gate[] = [
     // allowed in non-display contexts; forbid it appearing in JSX text of web pages.
     cmd: `grep -rn 'CCTP_INBOUND_AFTER_USER_BURN' apps/web/src/app 2>/dev/null || true`
   },
-  // Phase 1 B1/B2 fail-closed gates (spec §5.1, §5.2).
+  // /fail-closed gates (spec , .
   {
     // FORBID the fail-open pattern: mpc_settle must not gate proof verification
     // on `if let Some(mpc_verifier)`, which skips verification when unset.
@@ -112,47 +112,51 @@ const gates: Gate[] = [
     cmd: `( grep -q "canonical_assoc" contracts/stellar/shielded_pool/src/lib.rs && grep -q "deadline_ledger" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo MPC_B2_BINDING_MISSING`
   },
   {
-    // Phase 2: withdraw must select the token from the asset registry by the
+    // withdraw must select the token from the asset registry by the
     // note's assetId signal and debit per-asset supply — never a hardcoded USDC.
     name: "withdraw is asset-bound: reads assetId signal + per-asset supply (Phase 2)",
     cmd: `( grep -q "let asset_id: BytesN<32> = signals.get(17)" contracts/stellar/shielded_pool/src/lib.rs && grep -q "adjust_note_supply(&env, &asset_id, -withdrawn_value)" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo WITHDRAW_NOT_ASSET_BOUND`
   },
   {
-    // Phase 3: the atomic swap must deliver the output asset AND bind the solver
+    // the atomic swap must deliver the output asset AND bind the solver
     // to the exact terms (price + amounts + recipient) so the relayer can't mutate.
     name: "rfq_settle_atomic_swap delivers output + binds solver terms (Phase 3)",
     cmd: `( grep -q "fn rfq_settle_atomic_swap" contracts/stellar/shielded_pool/src/lib.rs && grep -q "ed25519_verify(&solver_pubkey, &Bytes::from_array(&env, &swap_hash)" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::WrongPrice" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo RFQ_ATOMIC_MISSING`
   },
   {
-    // Phase 4: outbound CCTP must gate unsupported destination domains before burn.
+    // outbound CCTP must gate unsupported destination domains before burn.
     name: "withdraw_cctp gates unsupported destination domain (Phase 4)",
     cmd: `grep -q "Error::UnsupportedDomain" contracts/stellar/shielded_pool/src/lib.rs && echo "" || echo CCTP_DOMAIN_GATE_MISSING`
   },
   {
-    // Phase 6: priced cross-asset MPC requires a mandatory dedicated verifier and
+    // priced cross-asset MPC requires a mandatory dedicated verifier and
     // rejects a same-asset "priced" settlement.
     name: "mpc_settle_priced is fail-closed cross-asset (Phase 6)",
     cmd: `( grep -q "fn mpc_settle_priced" contracts/stellar/shielded_pool/src/lib.rs && grep -q "MPC_PVERIFIER" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::NotCrossAsset" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo MPC_PRICED_MISSING`
   },
   {
-    // Phase 7: withdraw_cctp is USDC-only — the note asset must equal registered USDC.
+    // withdraw_cctp is USDC-only — the note asset must equal registered USDC.
     name: "withdraw_cctp asserts USDC asset id (Phase 7)",
     cmd: `grep -q "recipient_hash(&env, &usdc_addr)" contracts/stellar/shielded_pool/src/lib.rs && echo "" || echo CCTP_ASSET_ASSERT_MISSING`
   },
   {
-    // Phase 7: per-asset supply must fail closed (no negative supply, supply <= balance).
+    // per-asset supply must fail closed (no negative supply, supply <= balance).
     name: "adjust_note_supply enforces reserve invariant (Phase 7)",
     cmd: `( grep -q "Error::SupplyUnderflow" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::ReserveBroken" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo RESERVE_INVARIANT_MISSING`
   },
   {
-    // Phase 7 root integrity (§13): the contract computes the tree root itself
+    // root integrity (the contract computes the tree root itself
     // (append_leaf via on-chain LeanIMT) and rejects a caller-supplied new_root
     // that does not match — no insert path trusts an unverified root.
-    name: "contract owns tree root integrity (Phase 7 §13)",
+    name: "contract owns tree root integrity",
     // The 4 insert paths must compute the root via append_leaf and reject a
     // mismatching caller-supplied new_root. Guard against a regression that
     // records a caller root directly (KnownRoot(new_root) without append_leaf).
     cmd: `( grep -q "fn append_leaf" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::RootMismatch" contracts/stellar/shielded_pool/src/lib.rs && [ "$(grep -c "append_leaf(&env," contracts/stellar/shielded_pool/src/lib.rs)" -ge 5 ] ) && echo "" || echo ROOT_INTEGRITY_MISSING`
+  },
+  {
+    name: "compliance_membership circuit enforces allow + deny + policy",
+    cmd: `( test -f circuits/compliance_membership/main.circom && grep -q "denyRoot" circuits/compliance_membership/main.circom && grep -q "allowRoot" circuits/compliance_membership/main.circom ) && echo "" || echo COMPLIANCE_CIRCUIT_MISSING`
   }
 ];
 

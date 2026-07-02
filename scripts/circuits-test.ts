@@ -6,7 +6,7 @@ import {
 } from "../apps/cli/src/lib/prove.js";
 import { ASSETS } from "@shade/assets";
 
-// C1: real circuit tests — generate a sample witness for each circuit, produce a
+// real circuit tests — generate a sample witness for each circuit, produce a
 // Groth16 proof, and verify it locally (snarkjs groth16 verify). Pure offline; no
 // chain. Fails if any circuit's proof does not verify against its vk.
 
@@ -24,7 +24,7 @@ try {
 } catch (e) { checks.push({ name: "withdraw_public proof verifies", ok: false, detail: (e as Error).message.slice(0, 160) }); }
 
 try {
-  // §6.8 cross-asset: a USDC note must NOT be provable as an XLM withdrawal.
+  // cross-asset: a USDC note must NOT be provable as an XLM withdrawal.
   // The note's commitment binds assetId; tampering assetId to XLM changes the
   // computed commitment so it is no longer a leaf in the (USDC) state tree, so
   // the witness cannot be built. We assert this FAILS closed.
@@ -69,7 +69,7 @@ try {
   checks.push({ name: "deposit_note_mint proof verifies + commitment bound", ok: dproof.locallyVerified && commitOk, detail: dproof.locallyVerified ? (commitOk ? "OK" : "commitment mismatch") : "verify FAILED" });
 } catch (e) { checks.push({ name: "deposit_note_mint proof verifies + commitment bound", ok: false, detail: (e as Error).message.slice(0, 160) }); }
 
-// Phase 6 (spec §10.6): priced cross-asset circuit — valid proof verifies; wrong
+// (priced cross-asset circuit — valid proof verifies; wrong
 // price / wrong output amount / minOutput violation / wrong asset pair all fail
 // witness generation (the circuit constraints reject them).
 try {
@@ -115,6 +115,40 @@ try {
   checks.push({ name: "priced: wrong asset pair rejected (outputAssetA != inputAssetB)", ok: tamper((w) => { w.outputAssetA = ASSETS.USDC.assetIdField; }, "adv_pair"), detail: "" });
 } catch (e) {
   checks.push({ name: "mpc_priced_settlement proof verifies (cross-asset)", ok: false, detail: (e as Error).message.slice(0, 200) });
+}
+
+// (compliance_membership — allowed+not-denied verifies;
+// denied fails, not-allowed fails, wrong roots fail (fail-closed).
+try {
+  const { buildComplianceProof, calcComplianceWitness } = await import("@shade/proving");
+  // Deny tree (sorted, with 0 + large sentinel bounds): denies 100 and 500.
+  const denyLabels = ["0", "100", "500", "1000000000000"];
+  const allowLabels = ["7", "42", "300"]; // 42 is allowed and NOT denied (100<42? no) -> pick 300 (between 100 and 500? no). Use 300: 100<300<500 but 300 not a deny leaf.
+  const base = {
+    label: "300", allowLabels, denyLabels, policyId: "12345",
+    scratch: SCRATCH, tag: "comp_ok"
+  };
+  const pr = buildComplianceProof(base);
+  checks.push({ name: "compliance: allowed + not-denied verifies", ok: pr.locallyVerified, detail: pr.locallyVerified ? "OK" : "verify FAILED" });
+
+  const tamper = (mut: (w: Record<string, unknown>) => void, tag: string): boolean => {
+    const w = JSON.parse(JSON.stringify(pr.witnessJson)) as Record<string, unknown>;
+    mut(w);
+    try { calcComplianceWitness(w, SCRATCH, tag); return false; } catch { return true; }
+  };
+  // Denied label: 100 is a deny leaf, so no adjacent lo<100<hi exists -> witness build throws.
+  let deniedRejected = false;
+  try { buildComplianceProof({ ...base, label: "100", tag: "comp_denied" }); } catch { deniedRejected = true; }
+  checks.push({ name: "compliance: denied label rejected", ok: deniedRejected, detail: "" });
+  // Not-allowed label (999 not in allow set) -> witness build throws.
+  let notAllowedRejected = false;
+  try { buildComplianceProof({ ...base, label: "999", tag: "comp_notallow" }); } catch { notAllowedRejected = true; }
+  checks.push({ name: "compliance: not-allowed label rejected", ok: notAllowedRejected, detail: "" });
+  // Wrong allow root (tamper) -> witness calc fails.
+  checks.push({ name: "compliance: wrong allow root rejected", ok: tamper((w) => { w.allowRoot = "123"; }, "comp_wrar"), detail: "" });
+  checks.push({ name: "compliance: wrong deny root rejected", ok: tamper((w) => { w.denyRoot = "123"; }, "comp_wrdr"), detail: "" });
+} catch (e) {
+  checks.push({ name: "compliance: allowed + not-denied verifies", ok: false, detail: (e as Error).message.slice(0, 200) });
 }
 
 beginReport({ title: "Circuit Tests" });

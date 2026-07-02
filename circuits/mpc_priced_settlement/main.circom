@@ -5,18 +5,15 @@ include "commitment.circom";
 include "merkleProof.circom";
 include "comparators.circom"; // circomlib: LessThan / LessEqThan / GreaterEqThan / IsEqual
 
-// Shade MpcPricedSettlement circuit (Phase 6, spec §10).
-//
+// Shade MpcPricedSettlement circuit (spec .
 // A PRICED CROSS-ASSET two-party crossing:
-//   Party A spends `matchedAmountA` of assetX (inputAssetA) and receives
-//     `matchedAmountB` of assetY (outputAssetA == inputAssetB);
-//   Party B spends `matchedAmountB` of assetY (inputAssetB) and receives
-//     `matchedAmountA` of assetX (outputAssetB == inputAssetA).
-//
+// Party A spends `matchedAmountA` of assetX (inputAssetA) and receives
+// `matchedAmountB` of assetY (outputAssetA == inputAssetB);
+// Party B spends `matchedAmountB` of assetY (inputAssetB) and receives
+// `matchedAmountA` of assetX (outputAssetB == inputAssetA).
 // Fixed-point price (assetY units per assetX unit):
-//   matchedAmountB == floor(matchedAmountA * priceScaled / priceScale)
+// matchedAmountB == floor(matchedAmountA * priceScaled / priceScale)
 // enforced as: 0 <= matchedAmountA*priceScaled - matchedAmountB*priceScale < priceScale.
-//
 // No partial fills: each input note's full value equals its matched amount.
 template MpcPricedSettlement(treeDepth, associationDepth) {
     // ── PUBLIC INPUTS ────────────────────────────────────────────────────────
@@ -158,12 +155,12 @@ template MpcPricedSettlement(treeDepth, associationDepth) {
     signal prod   <== matchedAmountA * priceScaled;  // ~ up to 2^90
     signal scaled <== matchedAmountB * priceScale;
     signal rem    <== prod - scaled;
-    // scaled <= prod  (rem >= 0)
+    // scaled <= prod (rem >= 0)
     component le = LessEqThan(128);
     le.in[0] <== scaled;
     le.in[1] <== prod;
     le.out === 1;
-    // rem < priceScale  (uniqueness of the floor)
+    // rem < priceScale (uniqueness of the floor)
     component lt = LessThan(64);
     lt.in[0] <== rem;
     lt.in[1] <== priceScale;

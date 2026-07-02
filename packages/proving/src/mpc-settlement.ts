@@ -82,8 +82,8 @@ function randField(): string {
 }
 
 // Reduce a 0x-prefixed 32-byte hex hash to a BN254 field element by taking
-// the first 31 bytes (248 bits — always < BN254 prime). Matches hashToField()
-// in prove.ts and the contract's hash_to_field() helper.
+// the first 31 bytes (248 bits — always < BN254 prime). Matches hashToField
+// in prove.ts and the contract's hash_to_field helper.
 function hashToField(hex32: string): string {
   const h = hex32.startsWith("0x") ? hex32.slice(2) : hex32;
   return BigInt("0x" + h.slice(0, 62)).toString();
@@ -100,12 +100,10 @@ function readCoinPreimage(coin: GeneratedCoin): NotePreimage {
 }
 
 // Build the mpc_settlement circuit witness input JSON from two coin files.
-//
 // Runs `coinutils withdraw` once per coin to derive each note's Merkle proof
 // paths from the pool state. The binding fields (operation-type, recipient, etc.)
 // are dummies — only the Merkle/ASP path fields are extracted and renamed for the
 // mpc_settlement input signals (labelA/B, stateSiblingsA/B, etc.).
-//
 // Returns the witness JSON plus the freshly generated output note preimages.
 // Callers should persist outPreimageA to party B and outPreimageB to party A
 // (cross-swap: A's output is B's new note and vice versa).
@@ -144,7 +142,7 @@ export function buildMpcSettlementWitness(p: MpcSettlementParams): {
   const wA = JSON.parse(readFileSync(inputPathA, "utf8")) as Record<string, unknown>;
   const wB = JSON.parse(readFileSync(inputPathB, "utf8")) as Record<string, unknown>;
 
-  // Phase 2/5: same-asset crossing — both input notes must be the same asset, and
+  // /5: same-asset crossing — both input notes must be the same asset, and
   // the output notes inherit it (assetA == assetB == outputAssetA == outputAssetB).
   const assetId = p.coinA.assetIdField;
   if (!assetId || assetId !== p.coinB.assetIdField) {
@@ -220,18 +218,16 @@ export function buildMpcSettlementWitness(p: MpcSettlementParams): {
 }
 
 // Build a Groth16 proof for an MPC committee-matched settlement.
-//
 // Requires compiled circuit artifacts in circuits/mpc_settlement/build/ and output/.
 // If they are absent, throws MpcCircuitNotBuiltError — callers catch this and fall
 // back to committee-signature-only settlement (still valid on testnet).
-//
 // Public signal layout (matches main.circom component declaration):
-//   [0] nullifierHashA   [1] nullifierHashB
-//   [2] outputCommitmentA [3] outputCommitmentB
-//   [4] stateRoot         [5] associationRoot
-//   [6] batchHash         [7] poolId
-//   [8] chainId           [9] matchedAmount7dp
-//   [10] deadlineLedger
+// [0] nullifierHashA [1] nullifierHashB
+// [2] outputCommitmentA [3] outputCommitmentB
+// [4] stateRoot [5] associationRoot
+// [6] batchHash [7] poolId
+// [8] chainId [9] matchedAmount7dp
+// [10] deadlineLedger
 export function buildMpcSettlementProof(p: MpcSettlementParams): MpcSettlementProof {
   if (!hasMpcSettlementArtifacts()) throw new MpcCircuitNotBuiltError();
 

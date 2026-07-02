@@ -4,10 +4,10 @@ import { resolve } from "node:path";
 import { compareRoots, recomputeRoot, type DepositLeaf } from "./audit.js";
 import { runAudit } from "./run.js";
 
-// P1.9 root-auditor tests:
-//  1. correct commitment set + correct root  -> OK
-//  2. correct commitment set + WRONG on-chain root (registrar lied) -> ROOT_MISMATCH_CRITICAL detected
-//  3. live audit against the deployed ShadePool -> OK
+// root-auditor tests:
+// 1. correct commitment set + correct root -> OK
+// 2. correct commitment set + WRONG on-chain root (registrar lied) -> ROOT_MISMATCH_CRITICAL detected
+// 3. live audit against the deployed ShadePool -> OK
 // Exits non-zero if any required check fails.
 
 const SHADE_ROOT = process.env.SHADE_ROOT ?? process.cwd();

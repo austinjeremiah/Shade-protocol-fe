@@ -2,7 +2,7 @@ import { shamirSplit, shamirReconstruct, encodeShare, decodeShare } from "./sham
 import { computeBatchHash } from "./committee.js";
 import type { MatchResult } from "./types.js";
 
-// mpc-crypto unit tests. Phase 1 B5 expands this with batch-hash total-order and
+// mpc-crypto unit tests. expands this with batch-hash total-order and
 // coordinator matching tests; this file starts with the Shamir sharing core.
 
 const BN254_P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
@@ -13,7 +13,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   if (!ok) failed++;
 }
 
-// --- Shamir split/reconstruct roundtrip ---
+// Shamir split/reconstruct roundtrip ---
 {
   const secret = 123456789012345678901234567890n % BN254_P;
   const shares = shamirSplit(secret, 3, 5);
@@ -24,7 +24,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   check("shamir: a different threshold subset reconstructs the same secret", recovered2 === secret);
 }
 
-// --- Shares are in field range [0, P) (rejection sampling, B5.1) ---
+// Shares are in field range [0, P) (rejection sampling, 1) ---
 {
   let allInRange = true;
   for (let i = 0; i < 50; i++) {
@@ -36,7 +36,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   check("shamir: all share values are in [0, P)", allInRange);
 }
 
-// --- Fewer than threshold shares do NOT recover the secret ---
+// Fewer than threshold shares do NOT recover the secret ---
 {
   const secret = 999999999999n;
   const shares = shamirSplit(secret, 3, 5);
@@ -44,7 +44,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   check("shamir: sub-threshold shares do not reveal the secret", tooFew !== secret);
 }
 
-// --- Encode/decode roundtrip ---
+// Encode/decode roundtrip ---
 {
   const shares = shamirSplit(42n, 2, 3);
   const roundtrip = shares.map((s) => decodeShare(encodeShare(s)));
@@ -52,7 +52,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   check("shamir: encode/decode share roundtrip", same);
 }
 
-// --- Invalid thresholds are rejected (fail-closed) ---
+// Invalid thresholds are rejected (fail-closed) ---
 {
   let threw = false;
   try { shamirSplit(1n, 1, 3); } catch { threw = true; }
@@ -62,7 +62,7 @@ function check(name: string, ok: boolean, detail = ""): void {
   check("shamir: threshold > total rejected", threw);
 }
 
-// --- B5.2: computeBatchHash total-order determinism (spec §5.3.2) ---
+// 2: computeBatchHash total-order determinism (spec ---
 {
   const m1: MatchResult = { intentAId: "a1", intentBId: "b1", matchedAmount7dp: "1000000", inputAsset: "USDC", outputAsset: "XLM" };
   const m2: MatchResult = { intentAId: "a2", intentBId: "b2", matchedAmount7dp: "2000000", inputAsset: "USDC", outputAsset: "XLM" };

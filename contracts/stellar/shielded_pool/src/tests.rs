@@ -1,5 +1,5 @@
 #![cfg(test)]
-//! P0 #1 adversarial tests: the 2-of-3 committee threshold must be counted over
+//! adversarial tests: the 2-of-3 committee threshold must be counted over
 //! DISTINCT signer pubkeys. A single leaked/compromised key replayed twice must
 //! never satisfy the threshold on its own.
 
@@ -21,7 +21,7 @@ impl MockNullifierRegistry {
 }
 
 /// Mock mpc_settlement verifier that ACCEPTS every proof. Used to exercise the
-/// post-verification signal-binding path (B1/B2).
+/// post-verification signal-binding path (/.
 #[contract]
 struct MockVerifierAccept;
 
@@ -105,7 +105,7 @@ fn keypair(seed: u8) -> SigningKey {
     SigningKey::from_bytes(&[seed; 32])
 }
 
-/// Phase 7: independently compute the root the contract will produce after
+/// independently compute the root the contract will produce after
 /// appending `leaves` to an empty depth-12 LeanIMT — the same tree the contract
 /// owns. Lets tests assert the contract computes the exact expected root.
 fn compute_root(env: &Env, leaves: &[BytesN<32>]) -> BytesN<32> {
@@ -183,7 +183,7 @@ fn mpc_settle_rejects_duplicate_signer_replay() {
     assert!(result.is_err(), "duplicate signer must not satisfy the committee threshold");
 }
 
-// ---- Phase 4 inbound CCTP duplicate-nonce (spec §8.4) ----
+// - inbound CCTP duplicate-nonce (spec ----
 
 #[test]
 fn cctp_deposit_duplicate_nonce_no_second_note() {
@@ -247,7 +247,7 @@ fn cctp_deposit_duplicate_nonce_no_second_note() {
     assert_eq!(pool.note_supply(&BytesN::from_array(&env, &asset_id)), amount7 as i128, "supply unchanged after duplicate");
 }
 
-// ---- Phase 4 outbound CCTP (withdraw_cctp) binding (spec §8.6) ----
+// - outbound CCTP (withdraw_cctp) binding (spec ----
 
 /// 18-word withdraw-circuit signals for a CCTP exit (op = WITHDRAW_CCTP) with the
 /// destination bindings at [13..16].
@@ -333,7 +333,7 @@ fn withdraw_cctp_rejects_wrong_finality() {
     assert!(r.is_err(), "a mutated min_finality_threshold must be rejected");
 }
 
-// ---- Phase 2 withdraw asset-binding (spec §6.4/§6.6/§6.8) ----
+// - withdraw asset-binding (spec //----
 
 /// Replicate the contract's recipient_hash: sha256(strkey[56]) then hash_to_field
 /// (leading zero byte + first 31 bytes).
@@ -451,7 +451,7 @@ fn withdraw_selects_token_by_asset_and_debits_supply() {
     assert!(supply <= bal, "reserve invariant: note_supply <= vault_balance");
 }
 
-// ---- Phase 7 root integrity (spec §13.3) ----
+// - root integrity (spec ----
 
 #[test]
 fn deposit_forged_new_root_rejected() {
@@ -507,7 +507,7 @@ fn withdraw_unknown_asset_rejected() {
     assert!(result.is_err(), "withdraw for an unregistered asset must fail closed");
 }
 
-// ---- Phase 3 atomic USDC->XLM RFQ swap (spec §7) ----
+// - atomic USDC->XLM RFQ swap (spec ----
 
 struct SwapHarness {
     env: Env,
@@ -715,7 +715,7 @@ fn rfq_atomic_swap_rejects_unauthorized_solver() {
     assert!(result.is_err(), "a quote signed by an unauthorized solver must be rejected");
 }
 
-// ---- Phase 2 asset registry (spec §6.5/§6.8) ----
+// - asset registry (spec /----
 
 #[test]
 fn register_asset_and_lookup_token() {
@@ -753,7 +753,7 @@ fn register_asset_twice_rejected() {
     assert!(h.pool.try_register_asset(&asset_id, &sac2.address()).is_err(), "re-registering an asset_id must be rejected");
 }
 
-/// B1 (spec §5.1): once a committee exists, an mpc_verifier is MANDATORY. Valid,
+/// (once a committee exists, an mpc_verifier is MANDATORY. Valid,
 /// threshold-met committee signatures alone must NOT settle when no verifier is
 /// configured — the previous fail-open path (settle on sigs-only) is forbidden.
 #[test]
@@ -790,7 +790,7 @@ fn mpc_settle_rejects_when_verifier_unset() {
     assert!(result.is_err(), "committee sigs alone must not settle when no mpc_verifier is configured (fail closed)");
 }
 
-/// Full B1/B2 harness: committee + accepting verifier + canonical association
+/// Full /harness: committee + accepting verifier + canonical association
 /// root set, so a well-formed proof passes and adversarial variants fail.
 struct ProofHarness {
     h: Harness,
@@ -854,7 +854,7 @@ fn setup_proof(accept: bool) -> ProofHarness {
     }
 }
 
-/// B1: accepting verifier + well-formed proof + all bound signals correct -> ok.
+/// accepting verifier + well-formed proof + all bound signals correct -> ok.
 #[test]
 fn mpc_settle_accepts_valid_proof() {
     let p = setup_proof(true);
@@ -867,7 +867,7 @@ fn mpc_settle_accepts_valid_proof() {
     assert!(result.is_ok(), "valid proof + correct signals must settle: {:?}", result);
 }
 
-/// §9.6: fewer than threshold signatures (1 of 2/3) must be rejected.
+/// fewer than threshold signatures (1 of 2/3) must be rejected.
 #[test]
 fn mpc_settle_rejects_threshold_minus_one() {
     let p = setup_proof(true);
@@ -882,7 +882,7 @@ fn mpc_settle_rejects_threshold_minus_one() {
     assert!(result.is_err(), "below-threshold committee signatures must be rejected");
 }
 
-/// §9.6: a signer pubkey not in the registered committee must be rejected.
+/// a signer pubkey not in the registered committee must be rejected.
 #[test]
 fn mpc_settle_rejects_unknown_signer() {
     let p = setup_proof(true);
@@ -900,7 +900,7 @@ fn mpc_settle_rejects_unknown_signer() {
     assert!(result.is_err(), "an unregistered committee signer must be rejected");
 }
 
-/// §9.6: the proof's batchHash signal must match the batch_hash argument.
+/// the proof's batchHash signal must match the batch_hash argument.
 #[test]
 fn mpc_settle_rejects_wrong_batch_hash() {
     let p = setup_proof(true);
@@ -915,7 +915,7 @@ fn mpc_settle_rejects_wrong_batch_hash() {
     assert!(result.is_err(), "a proof bound to a different batch hash must be rejected");
 }
 
-/// §9.6: committee signatures over a different batch must not settle this batch.
+/// committee signatures over a different batch must not settle this batch.
 #[test]
 fn mpc_settle_rejects_signature_for_different_batch() {
     let p = setup_proof(true);
@@ -931,7 +931,7 @@ fn mpc_settle_rejects_signature_for_different_batch() {
     assert!(result.is_err(), "committee signatures over a different batch must be rejected");
 }
 
-/// B1: a proof the verifier rejects must abort settlement.
+/// a proof the verifier rejects must abort settlement.
 #[test]
 fn mpc_settle_rejects_invalid_proof() {
     let p = setup_proof(false);
@@ -944,7 +944,7 @@ fn mpc_settle_rejects_invalid_proof() {
     assert!(result.is_err(), "a verifier-rejected proof must not settle");
 }
 
-/// B2: signals[5] (associationRoot) != canonical ASP root -> reject. The prover
+/// signals[5] (associationRoot) != canonical ASP root -> reject. The prover
 /// must not choose its own compliance root.
 #[test]
 fn mpc_settle_rejects_wrong_association_root() {
@@ -959,7 +959,7 @@ fn mpc_settle_rejects_wrong_association_root() {
     assert!(result.is_err(), "proof binding a non-canonical association root must be rejected");
 }
 
-/// B2: signals[10] (deadlineLedger) in the past -> reject. Stale matches must
+/// signals[10] (deadlineLedger) in the past -> reject. Stale matches must
 /// not execute.
 #[test]
 fn mpc_settle_rejects_expired_deadline() {
@@ -975,7 +975,7 @@ fn mpc_settle_rejects_expired_deadline() {
     assert!(result.is_err(), "an expired deadlineLedger must be rejected");
 }
 
-/// P0 #2/#3 / P3 #23: once an mpc_verifier is configured, a proof is
+/// // once an mpc_verifier is configured, a proof is
 /// MANDATORY — committee signatures alone must never be enough. This is the
 /// exact gap the plan flagged before the verifier was wired in; guard against
 /// it regressing (e.g. someone "fixing" a proof-plumbing bug by silently
@@ -1019,7 +1019,7 @@ fn mpc_settle_rejects_missing_proof_when_verifier_configured() {
     assert!(result.is_err(), "valid committee sigs alone must not settle once a ZK verifier is configured — a proof is mandatory");
 }
 
-// ---- Phase 6 priced cross-asset MPC settlement (spec §10) ----
+// - priced cross-asset MPC settlement (spec ----
 
 struct PricedHarness {
     h: Harness,

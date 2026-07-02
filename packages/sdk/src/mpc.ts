@@ -17,7 +17,7 @@ export type EncryptedAmountShare = {
   senderPubkey: string; // hex, ephemeral X25519
 };
 
-// ---------- helpers --------------------------------------------------------------
+// ------- helpers --------------------------------------------------------------
 
 function toHex(u: Uint8Array): string {
   return Array.from(u).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -32,7 +32,7 @@ function randomBytes(n: number): Uint8Array {
   return b;
 }
 
-// ---------- Shamir over BN254 ----------------------------------------------------
+// ------- Shamir over BN254 ----------------------------------------------------
 // Same prime and polynomial as @shade/mpc-crypto — shares are cross-compatible.
 
 const P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
@@ -64,7 +64,7 @@ function shamirSplit(secret: bigint, threshold: number, total: number): Array<{ 
   });
 }
 
-// ---------- per-node X25519 box encryption ---------------------------------------
+// ------- per-node X25519 box encryption ---------------------------------------
 
 function encryptShareForNode(
   share: { x: bigint; y: bigint },
@@ -98,7 +98,7 @@ export function splitAndEncryptAmount(
   return nodes.map((node, i) => encryptShareForNode(shares[i], node.encryptionPubkey, node.nodeId));
 }
 
-// ---------- amount commitment -----------------------------------------------------
+// ------- amount commitment -----------------------------------------------------
 
 /** Random 32-byte blinding factor (hex). Use one per committed value. */
 export function randomBlinding(): string {

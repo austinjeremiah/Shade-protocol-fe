@@ -16,7 +16,7 @@ include "mux1.circom";
  * @param depth The depth of the Merkle tree
  */
 template MerkleProof(depth) {
-    // inputs 
+    // inputs
     signal input leaf;                  // leaf value to prove inclusion of
     signal input leafIndex;             // index of leaf in the Merkle tree
     signal input siblings[depth];       // sibling values along the path to the root

@@ -1,5 +1,4 @@
 // @shade/auth-privy — verify Privy access tokens (ES256 JWT) and enforce ownership.
-//
 // Privy access tokens are ES256 JWTs (iss=privy.io, aud=appId, sub=Privy DID).
 // We verify them OFFLINE with the dashboard verification key (an EC P-256 SPKI
 // public key) via WebCrypto — no network call, no SDK version coupling. The Privy

@@ -1,6 +1,6 @@
 import { simulateRemitReceipt, receiptMatchesSettlement, remitSettlementHash, recipientMetadataCommitment, type RemitQuote } from "./remit.js";
 
-// Phase 7 (spec §11.3): simulated remittance binding.
+// (simulated remittance binding.
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = ""): void {
@@ -21,7 +21,7 @@ const quote: RemitQuote = {
   simulated: true
 };
 
-// --- happy path: receipt is produced and matches the settlement ---
+// happy path: receipt is produced and matches the settlement ---
 {
   const { settlementHash, receipt } = simulateRemitReceipt(quote, blinding, 500);
   check("simulated receipt is labeled simulated", receipt.simulated === true && receipt.status === "SIMULATED_PAID");
@@ -29,28 +29,28 @@ const quote: RemitQuote = {
   check("currency + payout bound in receipt", receipt.currency === "INR" && receipt.payoutAmountMinor === "41500");
 }
 
-// --- expired quote rejected (fail closed) ---
+// expired quote rejected (fail closed) ---
 {
   let threw = false;
   try { simulateRemitReceipt(quote, blinding, 1001); } catch { threw = true; }
   check("expired quote rejected", threw);
 }
 
-// --- metadata change breaks the settlement binding ---
+// metadata change breaks the settlement binding ---
 {
   const { receipt } = simulateRemitReceipt(quote, blinding, 500);
   const changed = { ...quote, recipientMetadata: "upi:mallory@bank" };
   check("changed recipient metadata breaks the binding", !receiptMatchesSettlement(receipt, changed, blinding));
 }
 
-// --- wrong currency changes the settlement hash ---
+// wrong currency changes the settlement hash ---
 {
   const h1 = remitSettlementHash({ ...quote, recipientMetadataCommitment: recipientMetadataCommitment(quote.recipientMetadata, blinding) });
   const h2 = remitSettlementHash({ ...quote, currency: "USD", recipientMetadataCommitment: recipientMetadataCommitment(quote.recipientMetadata, blinding) });
   check("wrong currency changes the settlement hash", h1 !== h2);
 }
 
-// --- amount / anchor / policy / expiry all bound ---
+// amount / anchor / policy / expiry all bound ---
 {
   const base = recipientMetadataCommitment(quote.recipientMetadata, blinding);
   const h = remitSettlementHash({ ...quote, recipientMetadataCommitment: base });

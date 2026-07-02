@@ -1,6 +1,6 @@
 import { matchIntents } from "./coordinator.js";
 
-// B5.3 (spec §5.3.3): the matcher must not skip valid counterparties, and must
+// 3 (the matcher must not skip valid counterparties, and must
 // never pair an intent with itself.
 
 let failed = 0;
@@ -11,7 +11,7 @@ function check(name: string, ok: boolean, detail = ""): void {
 
 type Intent = { intentId: string; amount7dp: bigint; inputAsset: string; outputAsset: string };
 
-// --- Same-asset group (Phase 5 scope): reverse group == this group, so a naive
+// Same-asset group (scope): reverse group == this group, so a naive
 // two-pointer can pair sorted[0] with itself and skip the valid pair. ---
 {
   const intents: Intent[] = [
@@ -29,7 +29,7 @@ type Intent = { intentId: string; amount7dp: bigint; inputAsset: string; outputA
   }
 }
 
-// --- Cross-asset complementary pair still matches, once, no duplicates. ---
+// Cross-asset complementary pair still matches, once, no duplicates. ---
 {
   const intents: Intent[] = [
     { intentId: "A", amount7dp: 5_000000n, inputAsset: "USDC", outputAsset: "XLM" },
@@ -39,7 +39,7 @@ type Intent = { intentId: string; amount7dp: bigint; inputAsset: string; outputA
   check("matcher: cross-asset complementary pair matches exactly once", matches.length === 1, JSON.stringify(matches));
 }
 
-// --- Non-complementary intents do not match. ---
+// Non-complementary intents do not match. ---
 {
   const intents: Intent[] = [
     { intentId: "A", amount7dp: 5_000000n, inputAsset: "USDC", outputAsset: "XLM" },

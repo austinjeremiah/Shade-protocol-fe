@@ -11,7 +11,7 @@ type KeyRow = {
   signing_secret: string;    // ciphertext (see encryptSecret)
 };
 
-// P0 #6: committee secret keys must never sit in Postgres in plaintext — a
+// committee secret keys must never sit in Postgres in plaintext — a
 // single DB dump would otherwise hand over every node's signing key, defeating
 // the whole point of a 2-of-3 committee. Secret keys are encrypted at rest
 // with AES-256-GCM under MPC_KEY_ENCRYPTION_SECRET, a key that lives only in

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 
-// P1.11: print the freshly-generated report and FAIL the command if it contains
+// print the freshly-generated report and FAIL the command if it contains
 // any FAIL marker (CI gate). Falls back to the legacy committed report if the
 // generated one hasn't been produced yet.
 const generated = process.env.SHADE_REPORT_FILE ?? "docs/test-report.generated.md";

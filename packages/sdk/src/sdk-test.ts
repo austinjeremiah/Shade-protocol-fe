@@ -26,7 +26,7 @@ const check = (name: string, ok: boolean, detail = "") => {
 
 console.log("=== @shade/sdk smoke test ===\n");
 
-// ---- CCTP route builder --------------------------------------------------------
+// - CCTP route builder --------------------------------------------------------
 
 const TESTNET_POOL = "CCSC4FB3ZL6TV7FEMRK3QUF5LALTSI5NQFCBH4Q2VMCQMSTQK6HP2XFQ";
 
@@ -59,7 +59,7 @@ try {
   check("buildDepositRoute: rejects invalid pool strkey", true);
 }
 
-// ---- NoteManager ---------------------------------------------------------------
+// - NoteManager ---------------------------------------------------------------
 
 const vault = NoteManager.createVault();
 check("NoteManager.createVault: version correct", vault.version === "shade-note-vault-v1");
@@ -102,7 +102,7 @@ const restored = await NoteManager.decrypt(ciphertext, iv, masterKey, aad);
 check("NoteManager.decrypt: round-trip notes count", restored.notes.length === vault4.notes.length);
 check("NoteManager.decrypt: round-trip commitment", restored.notes[0].commitment === vault4.notes[0].commitment);
 
-// ---- Phase B: MPC private-intent construction ----------------------------------
+// - Phase B: MPC private-intent construction ----------------------------------
 
 // Synthetic 3-node committee (matching real committee shape).
 import nacl from "tweetnacl";
@@ -144,7 +144,7 @@ const valCommit = await buildValueCommitment("0xE488bb2bd58E9C425F525293856FAA52
 check("buildValueCommitment: 32 bytes", valCommit.length === 66);
 check("buildValueCommitment: differs from amount commitment", valCommit !== commitment);
 
-// ---- IntentClient (structure only — no network) --------------------------------
+// - IntentClient (structure only — no network) --------------------------------
 
 const client = new IntentClient("https://api.shade.example");
 check("IntentClient: instantiates", client instanceof IntentClient);
@@ -152,9 +152,9 @@ check("IntentClient: instantiates", client instanceof IntentClient);
 const clientAuth = new IntentClient("https://api.shade.example", "token-xyz");
 check("IntentClient: instantiates with auth", clientAuth instanceof IntentClient);
 
-// ---- Wallet adapters (structure only) ------------------------------------------
+// - Wallet adapters (structure only) ------------------------------------------
 
-// FreighterAdapter.fromWindow() returns null when Freighter is not installed.
+// FreighterAdapter.fromWindow returns null when Freighter is not installed.
 const adapter = FreighterAdapter.fromWindow();
 check("FreighterAdapter.fromWindow: returns null without Freighter", adapter === null);
 
@@ -167,7 +167,7 @@ const evmAdapter = new EvmSignerAdapter(mockSigner);
 const addr = await evmAdapter.address();
 check("EvmSignerAdapter.address: returns address", addr === "0xE488bb2bd58E9C425F525293856FAA529f7b1db3");
 
-// ---- Summary -------------------------------------------------------------------
+// - Summary -------------------------------------------------------------------
 
 console.log("");
 const failed = results.filter(r => !r.ok);

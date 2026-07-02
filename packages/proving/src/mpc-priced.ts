@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { SHADE_ROOT, COINUTILS_BIN, mpcPricedSettlementCircuitDir } from "./paths.js";
 import type { GeneratedCoin } from "./prove.js";
 
-// Phase 6 (spec §10): priced cross-asset MPC settlement witness + proof builder.
+// (priced cross-asset MPC settlement witness + proof builder.
 // Party A spends coinX (assetX) and receives assetY; party B spends coinY
 // (assetY) and receives assetX, at a fixed-point price. Because coinutils uses a
 // fixed COIN_VALUE, the default matched amounts are equal (price 1.0); callers

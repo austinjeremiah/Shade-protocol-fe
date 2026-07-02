@@ -28,8 +28,8 @@ export type GeneratedCoin = {
   assetIdField: string;
 };
 
-// Phase 2: every coin binds an asset id into its commitment. `assetIdField`
-// defaults to the canonical USDC id (the only asset before Phase 2, and the one
+// every coin binds an asset id into its commitment. `assetIdField`
+// defaults to the canonical USDC id (the only asset before , and the one
 // the deposit path binds via assetStrkey), so existing USDC-only callers are
 // unchanged; multi-asset callers pass an explicit id from @shade/assets.
 export function generateCoin(scope: string, outPath: string, assetIdField: string = ASSETS.USDC.assetIdField): GeneratedCoin {
@@ -44,7 +44,7 @@ export function generateCoin(scope: string, outPath: string, assetIdField: strin
   };
 }
 
-// #4 Build a real ASP association set containing this coin's label and return
+// Build a real ASP association set containing this coin's label and return
 // both the association-set file path and its root (0x-32-byte) for the contract.
 export function buildAssociationSet(coin: GeneratedCoin, scratch: string, tag: string): { assocPath: string; rootHex: string } {
   const label = JSON.parse(readFileSync(coin.path, "utf8")).coin.label as string;
@@ -87,9 +87,9 @@ export type TransferProof = {
   locallyVerified: boolean;
 };
 
-// #2 Build a hidden-amount PrivateTransfer proof: spend `coin`, create an output
+// Build a hidden-amount PrivateTransfer proof: spend `coin`, create an output
 // note of (value - fee). Amounts stay private; only fee + output commitment public.
-// P2 #14: `assocPath`, when provided, proves the spender's label is in the ASP
+// `assocPath`, when provided, proves the spender's label is in the ASP
 // allow-set (see circuits/private_transfer/main.circom). Omitting it produces a
 // proof that only verifies on-chain against an associationRoot of 0 (compliance
 // disabled) — callers doing real settlement should always supply it, the same
@@ -132,26 +132,26 @@ export type NoteProof = {
 };
 
 // Build a Groth16 note-ownership proof for a coin against a state tree of
-// `commitmentsDecimal`. Requires an ASP association-set file (#4 enforced).
-// `commitmentsDecimal` is the full leaf set in the pool (anonymity set, #1).
-// P1.5 operation-binding fields for the withdraw circuit.
+// `commitmentsDecimal`. Requires an ASP association-set file (enforced).
+// `commitmentsDecimal` is the full leaf set in the pool (anonymity set, .
+// operation-binding fields for the withdraw circuit.
 export type WithdrawBinding = {
   operationType: string; // "1" withdraw, "2" cctp, "3" rfq
   recipientHash: string; // decimal field element = int(sha256(strkey)[:31])
   relayerFee: string;    // 7dp
   deadlineLedger: string;
-  // P1.6 RFQ-settlement bindings (decimal field elements; default "0" for non-RFQ).
+  // RFQ-settlement bindings (decimal field elements; default "0" for non-RFQ).
   quoteHash?: string;
   intentHash?: string;
   fillReceiptHash?: string;
-  // P1.7 WithdrawCCTP destination bindings (decimal field elements; default "0").
+  // WithdrawCCTP destination bindings (decimal field elements; default "0").
   destinationDomain?: string;
   destinationRecipient?: string; // int(recipient32 bytes)
   maxFee?: string;
   minFinalityThreshold?: string;
 };
 
-// P1.7: convert a 0x-prefixed 32-byte CCTP mintRecipient to the contract's field
+// convert a 0x-prefixed 32-byte CCTP mintRecipient to the contract's field
 // element (the integer value of the 32 bytes). The 12 leading zero bytes keep it
 // well under the BLS field modulus; the contract compares the raw 32-byte arg.
 export function recipient32ToField(hex32: string): string {
@@ -165,7 +165,7 @@ export function recipientHashField(strkey: string): string {
   return BigInt("0x" + sha.subarray(0, 31).toString("hex")).toString();
 }
 
-// P1.6: reduce an existing 0x-prefixed 32-byte hash (e.g. a quote/intent/fill
+// reduce an existing 0x-prefixed 32-byte hash (e.g. a quote/intent/fill
 // hash) to the contract's field element: int(hash[:31 bytes]). The contract's
 // `hash_to_field` recomputes the identical value from the raw 32-byte arg.
 export function hashToField(hex32: string): string {
@@ -192,11 +192,11 @@ export function buildNoteProof(
     "--recipient-hash", b.recipientHash,
     "--relayer-fee", b.relayerFee,
     "--deadline-ledger", b.deadlineLedger,
-    // P1.6 RFQ bindings (default "0" for withdraw/cctp).
+    // RFQ bindings (default "0" for withdraw/cctp).
     "--quote-hash", b.quoteHash ?? "0",
     "--intent-hash", b.intentHash ?? "0",
     "--fill-receipt-hash", b.fillReceiptHash ?? "0",
-    // P1.7 CCTP bindings (default "0" for withdraw/rfq).
+    // CCTP bindings (default "0" for withdraw/rfq).
     "--destination-domain", b.destinationDomain ?? "0",
     "--destination-recipient", b.destinationRecipient ?? "0",
     "--max-fee", b.maxFee ?? "0",
@@ -229,7 +229,7 @@ export type DepositProof = {
   locallyVerified: boolean;
 };
 
-// P1.8 inputs that bind the CCTP message to the note commitment. Hash fields are
+// inputs that bind the CCTP message to the note commitment. Hash fields are
 // reduced to the contract's field element (int(hash[:31])); domains/amounts are
 // decimal. assetIdHash/recipientPool use the strkey-sha256 reduction the contract
 // applies via `recipient_hash` (sha256(strkey)[:31]).
@@ -248,7 +248,7 @@ export type DepositBinding = {
   chainId: string;
 };
 
-// P1.8: build a DepositNoteMint proof. The note opening (value/label/nullifier/
+// build a DepositNoteMint proof. The note opening (value/label/nullifier/
 // secret) comes from the coin file; the public signals bind the CCTP message.
 export function buildDepositProof(coin: GeneratedCoin, b: DepositBinding, scratch: string, tag: string): DepositProof {
   const opening = JSON.parse(readFileSync(coin.path, "utf8")).coin as {

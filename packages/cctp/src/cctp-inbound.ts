@@ -24,10 +24,10 @@ export type InboundParams = {
   targetContract?: string; // override forwardRecipient + receive target (e.g. shielded_pool)
   rootMethod?: string; // method to read the post-insert root on the target (default get_root)
   newRootHex?: string; // off-chain-computed post-insert Merkle root (shielded_pool)
-  coin?: GeneratedCoin; // P1.8: the note (opening) — REQUIRED for shielded_pool deposit proof
-  scratch?: string; // scratch dir for P1.8 deposit proof artifacts
-  poolId?: string; // P1.8 domain separator (default "1")
-  chainId?: string; // P1.8 domain separator (default "148")
+  coin?: GeneratedCoin; // the note (opening) — REQUIRED for shielded_pool deposit proof
+  scratch?: string; // scratch dir for deposit proof artifacts
+  poolId?: string; // domain separator (default "1")
+  chainId?: string; // domain separator (default "148")
   adminSecret?: string; // secret key authorized to call receive_cctp_deposit (pool admin); defaults to relayerSecret
 };
 
@@ -165,8 +165,8 @@ export async function runCctpInbound(env: EnvMap, p: InboundParams): Promise<Inb
   const amount7 = mintedDelta7;
 
   // 5) Register the note commitment. The shielded_pool takes the off-chain-computed
-  //    post-insert root AND a P1.8 DepositNoteMint proof binding the commitment to
-  //    the CCTP message; the legacy vault (CommitmentTree-backed) does neither.
+  // post-insert root AND a DepositNoteMint proof binding the commitment to
+  // the CCTP message; the legacy vault (CommitmentTree-backed) does neither.
   let depositProofArgs: string[] = [];
   if (p.targetContract) {
     if (!p.coin) throw new Error("P1.8: coin (note opening) required for shielded_pool deposit proof");
@@ -236,7 +236,7 @@ export async function runCctpInbound(env: EnvMap, p: InboundParams): Promise<Inb
 }
 
 // ===========================================================================
-// FIX6 (audit2): user-signed-burn inbound. The USER already burned on Arbitrum;
+// (audit2): user-signed-burn inbound. The USER already burned on Arbitrum;
 // the relayer validates that burn, then completes the Stellar side. No backend
 // EVM key is used here.
 // ===========================================================================
@@ -328,7 +328,7 @@ export async function runPostUserBurnCctpInbound(env: EnvMap, p: PostUserBurnPar
   if (amount7 <= 0n) throw new Error("mint_and_forward produced no pool USDC delta");
 
   // 3) DepositNoteMint proof (requires the note opening). Gated: dev/test supplies
-  //    the coin; the proof binds the commitment to the CCTP message.
+  // the coin; the proof binds the commitment to the CCTP message.
   if (!p.coin) throw new Error("coin opening required to build DepositNoteMint proof (supply via prover path)");
   const dep = buildDepositProof(p.coin, {
     sourceDomain: String(LOCKED_CCTP.arbitrumSepoliaDomain), destinationDomain: String(LOCKED_CCTP.stellarDomain),

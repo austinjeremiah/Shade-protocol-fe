@@ -51,15 +51,15 @@ const inbound = await runCctpInbound(env, {
 results.push({ name: "note funded into pool (CCTP inbound)", ok: true, detail: `leaf ${inbound.leafIndex}` });
 const onchainRoot = poolRead("get_root");
 
-// 2) CCTP outbound parameters — bound into the proof (P1.7) so a relayer cannot
-//    redirect the burn, change domain, or alter fee/threshold.
+// 2) CCTP outbound parameters — bound into the proof (so a relayer cannot
+// redirect the burn, change domain, or alter fee/threshold.
 const exitAmount7 = BigInt(coin.value7dp);
 const maxFee7 = exitAmount7 / 1000n > 0n ? exitAmount7 / 1000n : 1n; // fast-transfer fee budget
 const destDomain = LOCKED_CCTP.arbitrumSepoliaDomain;
 const minFinality = 1000;
 const exitDeadlineLedger = "999999999";
 
-// 3) Build the note-ownership proof WITH P1.7 destination bindings (op_type=2).
+// 3) Build the note-ownership proof WITH destination bindings (op_type=2).
 const proof = buildNoteProof(coin, [coin.commitmentDecimal], "shade_exit", SCRATCH, "exit", assoc.assocPath, {
   operationType: "2",
   recipientHash: "0",
@@ -74,9 +74,9 @@ results.push({ name: "exit proof locally verified", ok: proof.locallyVerified, d
 const rootMatch = proof.stateRootHex.toLowerCase() === ("0x" + onchainRoot.toLowerCase());
 results.push({ name: "circuit stateRoot == pool root", ok: rootMatch, detail: rootMatch ? "match" : `${proof.stateRootHex} vs 0x${onchainRoot}` });
 
-// 3b) NEGATIVE (P1.7): a relayer reuses the valid user proof but redirects the
-//     burn to a DIFFERENT Arbitrum recipient. The proof binds the original
-//     recipient, so the contract must reject with WrongDestRecipient (#18).
+// 3b) NEGATIVE (a relayer reuses the valid user proof but redirects the
+// burn to a DIFFERENT Arbitrum recipient. The proof binds the original
+// recipient, so the contract must reject with WrongDestRecipient (.
 const attackerRecipient32 = "0x" + "00".repeat(12) + "dead".repeat(10); // 12 zero + 20 addr bytes
 let redirectRejected = false; let redirectErr = "";
 try {
@@ -91,7 +91,7 @@ try {
 results.push({ name: "P1.7 relayer cannot redirect CCTP burn (proof binds recipient)", ok: redirectRejected, detail: redirectRejected ? (/#18|WrongDestRecipient/.test(redirectErr) ? "rejected Error(Contract, #18) WrongDestRecipient" : `rejected: ${redirectErr.slice(0, 80)}`) : "NOT rejected!" });
 
 // 4) Proof-bound outbound burn on Stellar (pool burns USDC via CCTP to Arbitrum).
-//    Signed by the note owner (user); destination/fee/threshold bound by the proof.
+// Signed by the note owner (user); destination/fee/threshold bound by the proof.
 let burnTxHash = "";
 let outboundOk = false;
 let outboundDetail = "";

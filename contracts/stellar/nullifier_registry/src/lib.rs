@@ -6,7 +6,7 @@ enum DataKey {
     Admin,
     Paused,
     Spent(BytesN<32>),
-    Authorized(Address), // #P1.3 allowed-spender registry
+    Authorized(Address), // #allowed-spender registry
 }
 
 #[contract]
@@ -39,7 +39,7 @@ impl NullifierRegistry {
     }
 
     /// Spend a nullifier exactly once. Only an authorized spender contract may
-    /// call this, and it must authorize the call (caller.require_auth()).
+    /// call this, and it must authorize the call (caller.require_auth).
     pub fn spend(env: Env, caller: Address, nullifier: BytesN<32>) -> bool {
         Self::require_not_paused(&env);
         caller.require_auth();

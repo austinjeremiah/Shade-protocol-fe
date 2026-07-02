@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ASSETS, assetIdField, assetIdHex, assetBySymbol, assetByIdHex, makeAssetConfig } from "./index.js";
 
-// Phase 2 asset registry tests (spec §6.2).
+// asset registry tests (spec .
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = ""): void {
@@ -12,7 +12,7 @@ function check(name: string, ok: boolean, detail = ""): void {
 const BN254_P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const BLS_R = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
 
-// --- assetId derivation matches the contract/circuit hash_to_field(strkey) ---
+// assetId derivation matches the contract/circuit hash_to_field(strkey) ---
 {
   const token = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
   const expected = BigInt("0x" + createHash("sha256").update(token).digest().subarray(0, 31).toString("hex")).toString();
@@ -24,7 +24,7 @@ const BLS_R = 524358751751261904794477405081859658376905525005276378226036586999
   check("assetIdHex encodes assetIdField big-endian", BigInt(assetIdHex(token)) === field);
 }
 
-// --- USDC and XLM are distinct assets with distinct ids ---
+// USDC and XLM are distinct assets with distinct ids ---
 {
   check("USDC and XLM registered", !!ASSETS.USDC && !!ASSETS.XLM);
   check("USDC != XLM assetId", ASSETS.USDC.assetIdHex !== ASSETS.XLM.assetIdHex);
@@ -32,7 +32,7 @@ const BLS_R = 524358751751261904794477405081859658376905525005276378226036586999
   check("XLM symbol/decimals", ASSETS.XLM.symbol === "XLM" && ASSETS.XLM.decimals === 7);
 }
 
-// --- lookups ---
+// lookups ---
 {
   check("assetBySymbol(USDC) round-trips", assetBySymbol("USDC").assetIdHex === ASSETS.USDC.assetIdHex);
   check("assetByIdHex round-trips", assetByIdHex(ASSETS.XLM.assetIdHex).symbol === "XLM");
@@ -44,7 +44,7 @@ const BLS_R = 524358751751261904794477405081859658376905525005276378226036586999
   check("unknown assetId rejected (no default)", threw);
 }
 
-// --- determinism ---
+// determinism ---
 {
   const a = makeAssetConfig("USDC", "CTESTTOKEN");
   const b = makeAssetConfig("USDC", "CTESTTOKEN");

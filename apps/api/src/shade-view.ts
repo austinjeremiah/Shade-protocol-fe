@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import nacl from "tweetnacl";
 
-// P2 #13 (Shade View): assemble and sign a selective-disclosure report per
+// (Shade View): assemble and sign a selective-disclosure report per
 // bible Sec 13.3. The report only ever contains values that are ALREADY
 // public on-chain (note commitments, nullifiers, tx hashes) plus metadata the
 // user already owns (quote/policy/anchor ids) — it never touches note

@@ -75,7 +75,7 @@ async function makeEnvelope(privyUserId: string, evmOnly = false): Promise<{ env
     const before = json(await app.inject({ method: "GET", url: `/v1/note-vaults/${env.vault_id}`, headers: authH }));
     check("vault not deposit-ready before verify-backup", before.backup_status === "created");
 
-    // FIX3: verify-backup with EMPTY body must be rejected
+    // verify-backup with EMPTY body must be rejected
     const emptyVerify = await app.inject({ method: "POST", url: `/v1/note-vaults/${env.vault_id}/verify-backup`, headers: authH, payload: {} });
     check("verify-backup with empty body rejected", emptyVerify.statusCode >= 400);
     // verify-backup with a real proof-of-decrypt object -> ready
@@ -98,7 +98,7 @@ async function makeEnvelope(privyUserId: string, evmOnly = false): Promise<{ env
     const cross = await app.inject({ method: "GET", url: `/v1/note-vaults/${env.vault_id}`, headers: { authorization: `Bearer ${otherTok}` } });
     check("another user cannot read the vault (404)", cross.statusCode === 404);
 
-    // ---- Note recovery ----
+    // - Note recovery ----
     // unauthenticated recovery rejected
     const noAuthRecover = await app.inject({ method: "POST", url: "/v1/notes/recover", payload: {} });
     check("POST /v1/notes/recover 401 without token", noAuthRecover.statusCode === 401);

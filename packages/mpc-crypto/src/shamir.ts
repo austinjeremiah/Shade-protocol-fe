@@ -20,7 +20,7 @@ function modinv(a: bigint): bigint {
   return modp(old_s);
 }
 
-// P3 #21: the largest multiple of P that fits in 256 bits. Rejecting draws
+// the largest multiple of P that fits in 256 bits. Rejecting draws
 // >= this bound before reducing mod P makes the output exactly uniform over
 // [0, P) — reducing an unrestricted 256-bit draw mod P (the prior approach)
 // is very slightly biased toward the low ~(2^256 mod P) residues, since

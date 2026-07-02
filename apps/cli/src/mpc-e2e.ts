@@ -24,7 +24,7 @@ import {
 
 const MPC_URL = process.env.MPC_COMMITTEE_URL ?? "http://127.0.0.1:8090";
 
-// ---- helpers ----
+// - helpers ----
 
 function ok(label: string, data?: unknown) {
   console.log(`\n[OK] ${label}`);
@@ -52,7 +52,7 @@ async function post(path: string, body: unknown) {
   return resp.json();
 }
 
-// ---- fake note data (representative; real flow uses on-chain notes) ----
+// - fake note data (representative; real flow uses on-chain notes) ----
 
 function fakeNote() {
   return {
@@ -62,7 +62,7 @@ function fakeNote() {
   };
 }
 
-// ---- main ----
+// - main ----
 
 console.log("=== Shade MPC Committee E2E Demo ===");
 console.log(`Committee URL: ${MPC_URL}`);
@@ -76,12 +76,12 @@ const { nodes: committeeNodes } = await get("/v1/mpc/committee") as { nodes: Com
 ok(`Committee has ${committeeNodes.length} nodes`, committeeNodes.map(n => ({ id: n.nodeId, encKey: n.encryptionPubkey.slice(0, 16) + "…" })));
 
 // 3. Build two intents that can cross:
-//    User A: sell 500 USDC (7dp = 5_000_000_0) for XLM
-//    User B: sell 500 XLM (7dp = 5_000_000_0) for USDC
-//    They cross at 500 USDC ↔ 500 XLM.
+// User A: sell 500 USDC (7dp = 5_000_000_0) for XLM
+// User B: sell 500 XLM (7dp = 5_000_000_0) for USDC
+// They cross at 500 USDC ↔ 500 XLM.
 
 const amountA = 5_000_000_0n;  // 500 USDC (7dp)
-const amountB = 5_000_000_0n;  // 500 XLM  (7dp)
+const amountB = 5_000_000_0n;  // 500 XLM (7dp)
 
 const noteA = fakeNote();
 const noteB = fakeNote();

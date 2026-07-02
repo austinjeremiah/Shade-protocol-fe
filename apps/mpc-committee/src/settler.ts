@@ -39,7 +39,7 @@ async function fetchIntentNote(pool: pg.Pool, intentId: string): Promise<IntentR
   return rows[0] ?? null;
 }
 
-// P0 #4: an MPC-matched intent is reachable by two settlement paths — the
+// an MPC-matched intent is reachable by two settlement paths — the
 // proof-backed POST /v1/rfq/settle lifecycle, and this settler's mpc_settle
 // path. Both spend the same nullifiers, so they must be mutually exclusive
 // per intent. Phase A routes every RFQ intent through the committee by giving

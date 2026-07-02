@@ -1,7 +1,7 @@
 import { Keypair } from "@stellar/stellar-sdk";
 import { atomicSwapHash, signAtomicSwap, quotedFromPrice, PRICE_SCALE, type AtomicSwapTerms } from "./rfq.js";
 
-// Phase 3 (spec §7.6/§7.7/§7.8): the solver-signed atomic swap terms must bind
+// (spec //: the solver-signed atomic swap terms must bind
 // every field, be deterministic, and match the on-chain fixed-point price rule.
 
 let failed = 0;
@@ -20,11 +20,11 @@ const base: AtomicSwapTerms = {
   recipientStrkey: recipient
 };
 
-// --- deterministic ---
+// deterministic ---
 check("atomicSwapHash is deterministic", atomicSwapHash(base) === atomicSwapHash({ ...base }));
 check("atomicSwapHash is 0x + 64 hex", /^0x[0-9a-f]{64}$/.test(atomicSwapHash(base)));
 
-// --- every field is bound (any change flips the hash) ---
+// every field is bound (any change flips the hash) ---
 const h0 = atomicSwapHash(base);
 check("changing quoteHash changes swap_hash", atomicSwapHash({ ...base, quoteHashHex: "0x" + "99".repeat(32) }) !== h0);
 check("changing outputAssetId changes swap_hash", atomicSwapHash({ ...base, outputAssetIdHex: "0x" + "33".repeat(32) }) !== h0);
@@ -33,7 +33,7 @@ check("changing minOutput changes swap_hash", atomicSwapHash({ ...base, minOutpu
 check("changing priceScaled changes swap_hash", atomicSwapHash({ ...base, priceScaled: 400_000_000n }) !== h0);
 check("changing recipient changes swap_hash", atomicSwapHash({ ...base, recipientStrkey: Keypair.random().publicKey() }) !== h0);
 
-// --- signing yields a 64-byte sig + 32-byte pubkey over the swap_hash ---
+// signing yields a 64-byte sig + 32-byte pubkey over the swap_hash ---
 {
   const solver = Keypair.random();
   const s = signAtomicSwap(base, solver.secret());
@@ -45,7 +45,7 @@ check("changing recipient changes swap_hash", atomicSwapHash({ ...base, recipien
   check("solver signature verifies over swap_hash", ok);
 }
 
-// --- fixed-point price rule matches the contract ---
+// fixed-point price rule matches the contract ---
 check("quotedFromPrice: 4M * 0.5 = 2M", quotedFromPrice(4_000_000n, 500_000_000n) === 2_000_000n);
 check("quotedFromPrice floors", quotedFromPrice(3n, PRICE_SCALE / 2n) === 1n); // floor(3*0.5)=1
 

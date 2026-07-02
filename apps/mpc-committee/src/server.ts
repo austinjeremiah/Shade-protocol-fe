@@ -15,9 +15,8 @@ import { persistSignedBatch } from "./persist.js";
 
 // DEV/DEMO MODE ONLY: three committee nodes + the coordinator run in this one
 // process, so one process holds all three secret keys simultaneously — no
-// real trust distribution (P4 #24). This is fine for `npm run mpc:dev` /
+// real trust distribution (. This is fine for `npm run mpc:dev` /
 // `mpc:e2e` local testing but must not be how a real committee runs.
-//
 // The independent-operator path is node-server.ts (run 3x, one secret key
 // each) + coordinator-server.ts (holds no secret keys — talks to nodes only
 // over authenticated HTTP): `npm run mpc:node:dev` / `mpc:coordinator:dev`.
@@ -34,9 +33,9 @@ const nodes = dbUrl
   ? await loadOrGenerateKeys(dbUrl, NODE_IDS)
   : NODE_IDS.map(id => generateNodeKeyPair(id));
 
-// P1 #12: persist every signed batch here, at the single point both the
+// persist every signed batch here, at the single point both the
 // manual/API-triggered match and the auto-batch timer funnel through — see
-// persistSignedBatch(). Only active when DATABASE_URL is set (matches the
+// persistSignedBatch. Only active when DATABASE_URL is set (matches the
 // settler's own no-DB/in-memory-only demo mode).
 const dbPool = dbUrl ? new pg.Pool({ connectionString: dbUrl }) : null;
 
@@ -45,7 +44,7 @@ const committeeInfo = nodes.map(nodePublicInfo);
 
 const state = new CommitteeState();
 
-// -------- Per-node Fastify instances --------
+// ----- Per-node Fastify instances --------
 // Each exposes: GET /info, POST /shares/:intentId, POST /sign-batch
 
 async function startNode(nodeIndex: number) {
@@ -86,7 +85,7 @@ async function startNode(nodeIndex: number) {
     }
   );
 
-  // P0 #5: there is intentionally NO network endpoint that returns a node's
+  // there is intentionally NO network endpoint that returns a node's
   // decrypted share. Decryption only ever happens in-process during matching
   // (see coordinator.ts::runMatchingRound), because these three "nodes" share
   // a process today. A prior version of this file exposed such an endpoint
@@ -98,7 +97,7 @@ async function startNode(nodeIndex: number) {
   console.log(`[mpc] node ${node.nodeId} listening on :${port}`);
 }
 
-// -------- Coordinator Fastify instance --------
+// ----- Coordinator Fastify instance --------
 
 async function startCoordinator() {
   const app = Fastify({ logger: { level: "info" } });
@@ -187,7 +186,7 @@ async function startCoordinator() {
   console.log(`[mpc] coordinator listening on :${COORDINATOR_PORT}`);
 }
 
-// -------- Auto-batch timer --------
+// ----- Auto-batch timer --------
 // Every BATCH_WINDOW_MS, close any open sessions with ≥2 intents and run matching.
 
 function startBatchTimer() {
@@ -207,7 +206,7 @@ function startBatchTimer() {
   }, BATCH_WINDOW_MS);
 }
 
-// -------- Boot --------
+// ----- Boot --------
 await Promise.all([
   startCoordinator(),
   ...nodes.map((_, i) => startNode(i))

@@ -5,50 +5,46 @@ include "commitment.circom";
 include "merkleProof.circom";
 
 // Shade MpcSettlement circuit.
-//
 // Proves that a two-party MPC committee match is consistent with real deposited
 // notes — without revealing the notes' private preimages. The circuit jointly
 // proves BOTH sides of a matched pair so the contract can atomically spend both
 // nullifiers in a single `mpc_settle` call.
-//
 // Hash-function architecture (no mismatch):
-//   - Committee batch hash: SHA-256 over a canonical JSON string (TypeScript code).
-//     This is passed as a PUBLIC input `batchHash`. The contract verifies the
-//     committee threshold Ed25519 signature over this hash independently.
-//   - In-circuit hashes: all Poseidon255 (commitment, nullifier, Merkle proofs,
-//     compliance tree). These NEVER need to match the SHA-256 batch hash.
-//   - Link: both the contract (committee sig check) and this circuit (proof)
-//     expose `batchHash` as a shared public signal. If they differ the contract
-//     rejects. This binds the proof to the committee-approved batch without
-//     requiring a SHA-256 gadget inside the circuit.
-//
+// Committee batch hash: SHA-256 over a canonical JSON string (TypeScript code).
+// This is passed as a PUBLIC input `batchHash`. The contract verifies the
+// committee threshold Ed25519 signature over this hash independently.
+// In-circuit hashes: all Poseidon255 (commitment, nullifier, Merkle proofs,
+// compliance tree). These NEVER need to match the SHA-256 batch hash.
+// Link: both the contract (committee sig check) and this circuit (proof)
+// expose `batchHash` as a shared public signal. If they differ the contract
+// rejects. This binds the proof to the committee-approved batch without
+// requiring a SHA-256 gadget inside the circuit.
 // What the circuit proves:
-//   1. Input note A and note B are genuine commitments in the current Merkle tree.
-//   2. Both labels satisfy the protocol's ASP compliance policy.
-//   3. Domain-separated nullifier hashes are correctly formed.
-//   4. Output commitments are well-formed from supplied preimages.
-//   5. Matched amount satisfies both trades (matchedAmount ≤ min(valueA, valueB)).
-//   6. Value is conserved: outValueA + outValueB == 2 × matchedAmount.
-//
+// 1. Input note A and note B are genuine commitments in the current Merkle tree.
+// 2. Both labels satisfy the protocol's ASP compliance policy.
+// 3. Domain-separated nullifier hashes are correctly formed.
+// 4. Output commitments are well-formed from supplied preimages.
+// 5. Matched amount satisfies both trades (matchedAmount ≤ min(valueA, valueB)).
+// 6. Value is conserved: outValueA + outValueB == 2 × matchedAmount.
 // Public-signal order (outputs first, then declared `public` inputs):
-//   [0]  nullifierHashA     domain-sep nullifier for note A (spent on-chain)
-//   [1]  nullifierHashB     domain-sep nullifier for note B (spent on-chain)
-//   [2]  outputCommitmentA  new note commitment (counterparty B will own this)
-//   [3]  outputCommitmentB  new note commitment (counterparty A will own this)
-//   [4]  stateRoot          Merkle root; both notes must be leaves
-//   [5]  associationRoot    ASP compliance root; both labels must be members
-//   [6]  batchHash          SHA-256 batch hash the committee signed (pass-through)
-//   [7]  poolId             domain separator
-//   [8]  chainId            domain separator
-//   [9]  matchedAmount7dp   amount of the trade (7dp)
-//   [10] deadlineLedger     later of the two intent deadlines
+// [0] nullifierHashA domain-sep nullifier for note A (spent on-chain)
+// [1] nullifierHashB domain-sep nullifier for note B (spent on-chain)
+// [2] outputCommitmentA new note commitment (counterparty B will own this)
+// [3] outputCommitmentB new note commitment (counterparty A will own this)
+// [4] stateRoot Merkle root; both notes must be leaves
+// [5] associationRoot ASP compliance root; both labels must be members
+// [6] batchHash SHA-256 batch hash the committee signed (pass-through)
+// [7] poolId domain separator
+// [8] chainId domain separator
+// [9] matchedAmount7dp amount of the trade (7dp)
+// [10] deadlineLedger later of the two intent deadlines
 
 template MpcSettlement(treeDepth, associationDepth) {
 
     // ── PUBLIC INPUTS ────────────────────────────────────────────────────────
     signal input stateRoot;
     signal input associationRoot;
-    // batchHash: the SHA-256 batch hash from `computeBatchHash()` in mpc-crypto.
+    // batchHash: the SHA-256 batch hash from `computeBatchHash` in mpc-crypto.
     // The contract verifies the committee threshold sig over this value and checks
     // that this proof's batchHash == the one that was signed.
     signal input batchHash;
@@ -56,8 +52,8 @@ template MpcSettlement(treeDepth, associationDepth) {
     signal input chainId;
     signal input matchedAmount7dp;
     signal input deadlineLedger;
-    // Phase 2/5: single asset id for a SAME-ASSET crossing — bound into all four
-    // note commitments (assetA == assetB == outputAssetA == outputAssetB, §6.4).
+    // /5: single asset id for a SAME-ASSET crossing — bound into all four
+    // note commitments (assetA == assetB == outputAssetA == outputAssetB, .
     signal input assetId;
 
     // ── PRIVATE INPUTS — NOTE A (the note being spent by party A) ───────────

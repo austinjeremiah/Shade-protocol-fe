@@ -34,10 +34,10 @@ async function drainUntilTerminal(queue: JobQueue, jobId: string, maxIters = 20)
 }
 
 // PHASE 2 relayer test.
-//  - Offline: an unknown/invalid job is marked failed (worker survives).
-//  - Live (RELAYER_LIVE=1): enqueue a real CCTP_INBOUND and run the worker; assert
-//    a real Arbitrum burn tx + a registered leaf on the canonical pool. Burns ~1
-//    USDC + takes minutes, so it is opt-in.
+// Offline: an unknown/invalid job is marked failed (worker survives).
+// Live (RELAYER_LIVE=1): enqueue a real CCTP_INBOUND and run the worker; assert
+// a real Arbitrum burn tx + a registered leaf on the canonical pool. Burns ~1
+// USDC + takes minutes, so it is opt-in.
 
 const SCRATCH = process.env.SHADE_SCRATCH_DIR ?? resolve(process.env.SHADE_ROOT ?? process.cwd(), ".scratch");
 const queue = new JobQueue();

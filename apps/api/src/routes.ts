@@ -56,7 +56,7 @@ import { signViewKeyReport, encryptReportAttachment } from "./shade-view.js";
 const CHAIN_FOR: Record<WalletType, string> = { EVM: "arbitrum-sepolia", STELLAR: "stellar-testnet" };
 function randomNonce(): string { return randomUUID().replace(/-/g, ""); }
 
-// FIX9: dev/legacy routes are unavailable unless ENABLE_DEV_ROUTES=true.
+// dev/legacy routes are unavailable unless ENABLE_DEV_ROUTES=true.
 function requireDevRoutes(): void {
   if (process.env.ENABLE_DEV_ROUTES !== "true") {
     const e = new Error("dev route disabled (set ENABLE_DEV_ROUTES=true)") as Error & { statusCode: number };
@@ -76,7 +76,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
 
   app.get("/v1/config", async () => LOCKED_CCTP);
   app.get("/v1/contracts", async () => ({
-    // Canonical contracts (the active settlement path; P1.1).
+    // Canonical contracts (the active settlement path; .
     shadePool: process.env.SHIELDED_POOL_CONTRACT,
     nullifierRegistry: process.env.NULLIFIER_REGISTRY_CONTRACT,
     verifierWithdraw: process.env.VERIFIER_WITHDRAW_CONTRACT,
@@ -84,7 +84,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     verifierDepositNoteMint: process.env.VERIFIER_DEPOSIT_NOTE_MINT_CONTRACT,
     cctpForwarder: process.env.STELLAR_CCTP_FORWARDER_CONTRACT,
     usdcSac: process.env.STELLAR_TESTNET_USDC_SAC_CONTRACT,
-    // Legacy contracts — DEPRECATED, not on the active path (P1.1).
+    // Legacy contracts — DEPRECATED, not on the active path (.
     deprecated: {
       shadeVault: process.env.SHADE_VAULT_CONTRACT,
       commitmentTree: process.env.COMMITMENT_TREE_CONTRACT,
@@ -102,7 +102,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { ok: db, db, pool: process.env.SHIELDED_POOL_CONTRACT || null, network: process.env.STELLAR_NETWORK_PASSPHRASE ?? "testnet" };
   });
 
-  // ---- Authentication (wallet-signature) ----
+  // - Authentication (wallet-signature) ----
   app.post("/v1/auth/nonce", async (request) => {
     const body = authNonceSchema.parse(request.body);
     const address = normalizeAddress(body.wallet_type, body.address);
@@ -139,7 +139,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { ok: true };
   });
 
-  // ---- User profile + wallets ----
+  // - User profile + wallets ----
   app.get("/v1/me", async (request) => {
     const userId = await authedUser(store, request);
     return store.getUser(userId);
@@ -154,7 +154,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     const userId = await authedUser(store, request);
     return { wallets: await store.listWallets(userId) };
   });
-  // FIX2: sync Privy linked wallets into the backend (Privy-auth required). The
+  // sync Privy linked wallets into the backend (Privy-auth required). The
   // wallets are attributed to the AUTHENTICATED user's DID — never a client id.
   app.post("/v1/me/wallets/sync-privy", async (request) => {
     const auth = await requirePrivyUser(store, request);
@@ -180,7 +180,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { ok: true };
   });
 
-  // ---- Per-user history ----
+  // - Per-user history ----
   app.get("/v1/me/deposits", async (request) => ({ deposits: await store.listByUser("cctp_deposits", await authedUser(store, request)) }));
   app.get("/v1/me/notes", async (request) => ({ notes: await store.listByUser("note_commitments", await authedUser(store, request)) }));
   app.get("/v1/me/withdrawals", async (request) => ({ withdrawals: await store.listByUser("withdrawals", await authedUser(store, request)) }));
@@ -188,13 +188,13 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   app.get("/v1/me/cctp-exits", async (request) => ({ exits: await store.listByUser("cctp_exits", await authedUser(store, request)) }));
   app.get("/v1/me/note-backups", async (request) => ({ backups: await store.listByUser("encrypted_note_backups", await authedUser(store, request)) }));
 
-  // P2 #18: the legacy server-side note-prepare path (generateNotePreimage
-  // in-process) was deleted here — Principle #3 requires note secrets never
+  // the legacy server-side note-prepare path (generateNotePreimage
+  // in-process) was deleted here — Principle requires note secrets never
   // touch the server, even transiently/dev-only. The canonical path is
   // POST /v1/deposits/prepare below: the client generates the note and only
   // sends the server a commitment + encrypted-payload hash.
 
-  // ---- PHASE 6: user-signed CCTP deposit (no backend EVM key) ----
+  // - PHASE 6: user-signed CCTP deposit (no backend EVM key) ----
   // Returns approval + burn tx requests for the USER's wallet to sign. The backend
   // never burns USDC itself. Gated on: wallet owned, vault owned + backup verified +
   // recovery policy sufficient, supported chain, positive amount, root healthy.
@@ -275,7 +275,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   depositStep("mint-forward", "STELLAR_MINT_FORWARD");
   depositStep("register-note", "REGISTER_NOTE");
 
-  // P2 #18: /v1/notes/local/derive (server-side generateNotePreimage) was
+  // /v1/notes/local/derive (server-side generateNotePreimage) was
   // deleted — note preimage generation belongs entirely in the browser/SDK
   // (packages/note-vault already provides client-safe crypto for this).
   app.post("/v1/notes/commitment", async (request) => ({ commitment: await poseidonCommitment(request.body as never) }));
@@ -316,7 +316,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     };
   });
 
-  // ---- Note vaults (PHASE 4): encrypted-vault storage + recovery policy ----
+  // - Note vaults (PHASE 4): encrypted-vault storage + recovery policy ----
   // The backend stores only ciphertext + wrapped keys and rejects plaintext.
   const ingestEnvelope = (env: EncryptedVaultEnvelope) => {
     validateVaultEnvelope(env);            // shape + plaintext gate
@@ -361,7 +361,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   // The client proves it could decrypt+restore the vault (cache-clear test) and
   // marks the backup verified — required before deposit.
   app.post("/v1/note-vaults/:vault_id/verify-backup", async (request, reply) => {
-    // FIX3: require a non-empty proof-of-decrypt verification object + sufficient
+    // require a non-empty proof-of-decrypt verification object + sufficient
     // recovery policy. The backend can't see plaintext, so it requires the client
     // to send the decrypt/compare result and stores it as metadata.
     const auth = await requirePrivyUser(store, request);
@@ -407,7 +407,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.post("/v1/proofs/:kind/request", async (request) => {
-    const userId = await authedUser(store, request); // FIX7: require auth
+    const userId = await authedUser(store, request); // require auth
     const body = proofRequestSchema.parse({ ...(request.body as object), proof_type: (request.params as { kind: string }).kind });
     const idempotencyKey = idem(request);
     const proofJobId = deterministicId({ namespace: "proof", parts: [idempotencyKey, body.proof_type, hashJson(body.public_inputs)] });
@@ -434,7 +434,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
 
   // PHASE 2 generic job status (prover/relayer queue): status + non-secret result + events.
   app.get("/v1/jobs/:job_id", async (request) => {
-    await authedUser(store, request); // FIX7: job status requires auth
+    await authedUser(store, request); // job status requires auth
     const id = (request.params as { job_id: string }).job_id;
     const job = await queue.getJob(id);
     if (!job) { const e = new Error("job not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
@@ -455,7 +455,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   // Submit a prepared withdraw proof via the relayer (pool.withdraw on-chain).
   app.post("/v1/withdrawals/submit", async (request) => {
-    await authedUser(store, request); // FIX7
+    await authedUser(store, request);
     await assertRootHealthy(store);
     const b = (request.body ?? {}) as Record<string, unknown>;
     const job = await queue.enqueue("relayer", "WITHDRAW_PUBLIC_SUBMIT", b, b.idempotency_key ? `wd-submit:${b.idempotency_key}` : undefined);
@@ -573,7 +573,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   // call the real solver; the returned quote is persisted. Otherwise returns the
   // quotes already recorded for the intent.
   app.post("/v1/intents/:intent_hash/request-quotes", async (request) => {
-    const userId = await authedUser(store, request); // FIX7/FIX8
+    const userId = await authedUser(store, request); // /
     const intentHash = (request.params as { intent_hash: string }).intent_hash;
     await requireOwnedIntent(store, userId, intentHash);
     const body = requestQuotesSchema.parse(request.body);
@@ -609,7 +609,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
     return { quote_id: body.quote_id, quote_hash: quoteHash };
   });
   app.post("/v1/quotes/:quote_id/accept", async (request) => {
-    const userId = await authedUser(store, request); // FIX8
+    const userId = await authedUser(store, request);
     const body = quoteAcceptanceSchema.parse(request.body);
     const quoteId = (request.params as { quote_id: string }).quote_id;
     await requireOwnedIntent(store, userId, body.intent_hash); // user must own the intent
@@ -679,7 +679,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
       );
       if (matchRows.length === 0) reject("MPC match not yet confirmed — intent is awaiting private committee matching", 409);
     }
-    // solver authorization is enforced on-chain (C4); the API records the lifecycle.
+    // solver authorization is enforced on-chain (; the API records the lifecycle.
 
     const settlementId = deterministicId({ namespace: "settle", parts: [body.intent_hash, body.quote_id, body.nullifier] });
     await store.insertGeneric("settlements", { settlement_id: settlementId, ...body, state: "SETTLEMENT_SUBMITTED" });
@@ -690,7 +690,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   app.get("/v1/settlements/:settlement_id", async (request) => store.getById("settlements", "settlement_id", (request.params as { settlement_id: string }).settlement_id));
 
-  // ---- Shade View: selective disclosure / view-key reports (P2 #13, bible Sec 13.3) ----
+  // - Shade View: selective disclosure / view-key reports (bible Sec 13.3) ----
   // The user picks which of THEIR OWN settlements/note commitments to disclose;
   // ownership is re-checked server-side. The report bundles only values already
   // public on-chain (commitments, nullifiers, tx hashes), never note secrets.
@@ -763,7 +763,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   app.post("/v1/cctp/outbound/prepare", async (request) => {
-    const userId = await authedUser(store, request); // FIX7
+    const userId = await authedUser(store, request);
     await assertRootHealthy(store);
     const body = cctpExitSchema.parse(request.body);
     const idempotencyKey = idem(request);
@@ -775,7 +775,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   // Submit a prepared withdraw_cctp proof via the relayer (proof-bound outbound burn).
   app.post("/v1/cctp/outbound/submit", async (request) => {
-    const userId = await authedUser(store, request); // FIX7
+    const userId = await authedUser(store, request);
     await assertRootHealthy(store);
     const b = (request.body ?? {}) as Record<string, unknown>;
     if (b.exit_id) await requireOwnedExit(store, userId, String(b.exit_id));
@@ -784,14 +784,14 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   // Granular outbound steps for clients driving the CCTP exit step by step.
   app.post("/v1/cctp/outbound/:exit_id/fetch-attestation", async (request) => {
-    const userId = await authedUser(store, request); // FIX7
+    const userId = await authedUser(store, request);
     const exitId = (request.params as { exit_id: string }).exit_id;
     await requireOwnedExit(store, userId, exitId);
     const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_ATTESTATION", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_ATTESTATION:${exitId}`);
     return { exit_id: exitId, job_id: job.job_id, status: "queued" };
   });
   app.post("/v1/cctp/outbound/:exit_id/complete-mint", async (request) => {
-    const userId = await authedUser(store, request); // FIX7
+    const userId = await authedUser(store, request);
     const exitId = (request.params as { exit_id: string }).exit_id;
     await requireOwnedExit(store, userId, exitId);
     const job = await queue.enqueue("relayer", "CCTP_OUTBOUND_MINT", { exit_id: exitId, ...(request.body as object) }, `CCTP_OUTBOUND_MINT:${exitId}`);
@@ -799,7 +799,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
   app.get("/v1/cctp/outbound/:exit_id", async (request) => store.getById("cctp_exits", "exit_id", (request.params as { exit_id: string }).exit_id));
 
-  // ---- Activity timeline + live stream ----
+  // - Activity timeline + live stream ----
   app.get("/v1/activity", async (request) => {
     const userId = await authedUser(store, request);
     return { activity: await store.listActivity(userId) };
@@ -822,7 +822,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
 
   app.get("/v1/test-report/latest", async () => ({ path: "docs/test-report.generated.md" }));
 
-  // ---- MPC committee routes ----
+  // - MPC committee routes ----
   // These proxy to the MPC committee service (MPC_COMMITTEE_URL) and persist
   // metadata to the mpc_* tables for audit and status tracking.
   const mpcUrl = () => process.env.MPC_COMMITTEE_URL ?? "http://localhost:8090";
@@ -928,7 +928,7 @@ export async function registerRoutes(app: FastifyInstance, store = new Store(), 
   });
 
   // Manually trigger a matching round for a session (dev/demo endpoint).
-  // P1 #12: persistence of the signed batch (mpc_batches / mpc_batch_signatures
+  // persistence of the signed batch (mpc_batches / mpc_batch_signatures
   // / mpc_sessions / mpc_intents) happens inside the committee service itself
   // (apps/mpc-committee/src/persist.ts), at the one place both this manual
   // trigger and the committee's own 30s auto-batch timer funnel through. A
@@ -1101,7 +1101,7 @@ async function authedUserOptional(store: Store, request: FastifyRequest): Promis
   return null;
 }
 
-// FIX7/FIX8 ownership helpers. Throw 403 if the row isn't owned by userId.
+// /ownership helpers. Throw 403 if the row isn't owned by userId.
 async function requireOwnedIntent(store: Store, userId: string, intentHash: string): Promise<void> {
   const row = await store.getById<{ user_id?: string }>("intents", "intent_hash", intentHash);
   if (!row) { const e = new Error("intent not found") as Error & { statusCode: number }; e.statusCode = 404; throw e; }
@@ -1113,7 +1113,7 @@ async function requireOwnedExit(store: Store, userId: string, exitId: string): P
   if (row.user_id && row.user_id !== userId) { const e = new Error("exit not owned by user") as Error & { statusCode: number }; e.statusCode = 403; throw e; }
 }
 
-// C7: refuse spends while the root auditor (P1.9) has flagged a critical root
+// refuse spends while the root auditor (has flagged a critical root
 // mismatch. Any unresolved ROOT_MISMATCH_CRITICAL finding blocks withdraw / RFQ
 // settle / CCTP-exit preparation with a 409.
 async function assertRootHealthy(store: Store): Promise<void> {

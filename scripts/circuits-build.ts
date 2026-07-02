@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beginReport, writeCheckReport, failIfAny, type CheckResult } from "../apps/cli/src/lib/report.js";
 
-// C1: real Circom build pipeline. Compiles every Shade circuit to r1cs+wasm, runs
+// real Circom build pipeline. Compiles every Shade circuit to r1cs+wasm, runs
 // the Groth16 trusted setup (reusing ptau), and exports the verification key.
 // Idempotent: skips setup if output/main_final.zkey already exists
 // (rerun with CIRCUITS_FORCE_SETUP=1 to regenerate keys).
@@ -31,12 +31,13 @@ const CIRCOM_BIN =
 
 // name -> nPublic (output signals + declared public inputs in component main)
 const CIRCUITS: { name: string; nPublic: number }[] = [
-  { name: "withdraw_public",   nPublic: 18 }, // 1 output + 16 inputs + Phase 2 assetId
-  { name: "private_transfer",  nPublic: 9  }, // hidden-amount transfer + ASP + Phase 2 in/out assetId
+  { name: "withdraw_public",   nPublic: 18 }, // 1 output + 16 inputs + assetId
+  { name: "private_transfer",  nPublic: 9  }, // hidden-amount transfer + ASP + in/out assetId
   { name: "deposit_note_mint", nPublic: 14 }, // 1 output + 13 inputs (assetIdHash already public)
   { name: "proof_of_fill_claim", nPublic: 11 }, // 1 output (claimId) + 10 public inputs
-  { name: "mpc_settlement",    nPublic: 12 }, // 4 outputs + 7 public inputs + Phase 2/5 assetId
-  { name: "mpc_priced_settlement", nPublic: 20 }, // Phase 6: 4 outputs + 16 public inputs (priced cross-asset)
+  { name: "mpc_settlement",    nPublic: 12 }, // 4 outputs + 7 public inputs + /5 assetId
+  { name: "mpc_priced_settlement", nPublic: 20 }, // 4 outputs + 16 public inputs (priced cross-asset)
+  { name: "compliance_membership", nPublic: 4 },  // 1 output (ok) + allowRoot + denyRoot + policyId
 ];
 
 const checks: CheckResult[] = [];
@@ -89,10 +90,10 @@ if (!ptauExists) {
       const vk    = resolve(dir, "output/main_verification_key.json");
 
       if (FORCE || !existsSync(zkey)) {
-        // Phase 1: Groth16 setup from r1cs + ptau
+        // Groth16 setup from r1cs + ptau
         execFileSync("npx", ["--yes", "snarkjs", "groth16", "setup", r1cs, PTAU, zkey0], { cwd: dir, env, timeout: 300_000, shell: true });
 
-        // Phase 2: zkey contribute — use -e flag for non-interactive entropy
+        // zkey contribute — use -e flag for non-interactive entropy
         execFileSync(
           "npx",
           ["--yes", "snarkjs", "zkey", "contribute", zkey0, zkey,

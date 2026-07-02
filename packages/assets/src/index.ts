@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 
-// Phase 2 asset registry (spec §6.2). The security source of truth for an asset
+// asset registry (spec . The security source of truth for an asset
 // is its canonical Stellar token/SAC contract id — NOT the display symbol. Every
 // asset maps to a deterministic field-compatible `assetId` used inside the ZK
 // commitment and bound on-chain.
-//
 // assetId = hash_to_field(canonical token contract) where hash_to_field is the
 // SAME reduction the circuits (coinutils) and the shielded_pool contract use:
-//   int( sha256(tokenContract)[:31 bytes] )
+// int(sha256(tokenContract)[:31 bytes] )
 // Taking the first 31 bytes (248 bits) keeps it well under both the BN254 and
 // BLS12-381 scalar field moduli, so the value is a valid field element on either
 // curve and never needs a modular reduction that could differ across engines.

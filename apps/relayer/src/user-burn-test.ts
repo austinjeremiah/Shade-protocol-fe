@@ -1,7 +1,7 @@
 import { Interface } from "ethers";
 import { LOCKED_CCTP, stellarContractToBytes32, encodeStellarForwardHook } from "@shade/cctp-utils";
 
-// FIX6 test: the burn-validation CHECKS (the security-critical part). We build
+// test: the burn-validation CHECKS (the security-critical part). We build
 // depositForBurnWithHook calldata and assert each binding check rejects a tampered
 // field and accepts the correct one. This exercises the same checks
 // validateInboundBurnTx applies (which otherwise needs a live Arbitrum RPC).

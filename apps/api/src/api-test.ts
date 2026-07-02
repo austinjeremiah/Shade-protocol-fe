@@ -32,7 +32,7 @@ try {
   const contracts = json(await app.inject({ method: "GET", url: "/v1/contracts" }));
   check("GET /v1/contracts moves legacy under deprecated (C3)", "deprecated" in contracts && !("shadeVault" in contracts));
 
-  // --- Auth: EVM nonce -> sign -> verify -> session ---
+  // Auth: EVM nonce -> sign -> verify -> session ---
   const wallet = Wallet.createRandom();
   const nonceRes = json(await app.inject({ method: "POST", url: "/v1/auth/nonce", payload: { wallet_type: "EVM", address: wallet.address } }));
   check("POST /v1/auth/nonce returns message", typeof nonceRes.message === "string" && typeof nonceRes.nonce === "string");
@@ -55,7 +55,7 @@ try {
   const sVerify = await app.inject({ method: "POST", url: "/v1/auth/stellar/verify", payload: { address: kp.publicKey(), signature: sSig, nonce: sNonce.nonce } });
   check("Stellar verify issues a session", sVerify.statusCode === 200 && typeof json(sVerify).session_token === "string");
 
-  // --- session-guarded endpoints ---
+  // session-guarded endpoints ---
   check("GET /v1/me 401 without session", (await app.inject({ method: "GET", url: "/v1/me" })).statusCode === 401);
   const me = json(await app.inject({ method: "GET", url: "/v1/me", headers: authH }));
   check("GET /v1/me returns the user", typeof me.id === "string");
@@ -66,7 +66,7 @@ try {
   const sess = json(await app.inject({ method: "GET", url: "/v1/auth/session", headers: authH }));
   check("GET /v1/auth/session authenticated", sess.authenticated === true);
 
-  // --- proof request -> prover worker -> ready (authenticated) ---
+  // proof request -> prover worker -> ready (authenticated) ---
   const wc = generateCoin("apitest_w", `${SCRATCH}/apitest_w.json`);
   const wassoc = buildAssociationSet(wc, SCRATCH, "apitest_w");
   const idemKey = `apitest-${wc.commitmentHex.slice(2, 18)}`;
@@ -87,19 +87,19 @@ try {
   const jobView = json(await app.inject({ method: "GET", url: `/v1/jobs/${post.job_id}`, headers: authH }));
   check("job reaches ready with proof bytes", jobView.status === "ready" && typeof (jobView.result as { proofHex?: string })?.proofHex === "string", `status=${jobView.status}`);
 
-  // --- RFQ lifecycle: intent -> quote -> accept -> lock -> fill (authenticated) ---
+  // RFQ lifecycle: intent -> quote -> accept -> lock -> fill (authenticated) ---
   const intentBody = { intent_type: "PRIVATE_RFQ", version: "1.0", user_pubkey_commitment: wc.commitmentHex, input_asset: "USDC:Stellar:SAC", output_asset: "USDC:ArbitrumSepolia", amount_mode: "exact_in", amount_commitment: "0x" + "11".repeat(32), min_output_commitment: "0x" + "22".repeat(32), expiry_ledger: 999999999, allowed_solvers_root: "0x" + "00".repeat(32), compliance_policy_id: "shade:default-testnet-policy:v1", destination_commitment: "0x" + "33".repeat(32), replay_domain: "shade:stellar:testnet:rfq:v1", signature: "0xtest" };
   const intent = json(await app.inject({ method: "POST", url: "/v1/intents", headers: { ...authH, "idempotency-key": `intent-${idemKey}` }, payload: intentBody }));
   check("POST /v1/intents creates intent", typeof intent.intent_hash === "string");
   const myRfq = json(await app.inject({ method: "GET", url: "/v1/me/rfq", headers: authH }));
   check("GET /v1/me/rfq accessible", Array.isArray(myRfq.settlements));
 
-  // --- activity timeline reflects logged events ---
+  // activity timeline reflects logged events ---
   const activity = json(await app.inject({ method: "GET", url: "/v1/activity", headers: authH }));
   const acts = activity.activity as Array<{ event_type: string }>;
   check("GET /v1/activity records auth.login + actions", Array.isArray(acts) && acts.some((a) => a.event_type === "auth.login"));
 
-  // --- logout revokes the session ---
+  // logout revokes the session ---
   await app.inject({ method: "POST", url: "/v1/auth/logout", headers: authH });
   check("session revoked after logout", (await app.inject({ method: "GET", url: "/v1/me", headers: authH })).statusCode === 401);
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// audit3 PART13 #5 (deposit-ui): the deposit page's vault-selection behavior. The
+// audit3 PART13 (deposit-ui): the deposit page's vault-selection behavior. The
 // page is a React component; we assert the source encodes the three required cases
 // (none → CTA, one → auto-select, multiple → dropdown) and replicate the selection
 // logic to verify it picks only verified+sufficient/strong vaults.

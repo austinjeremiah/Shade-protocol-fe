@@ -41,10 +41,14 @@
 
 These are tracked honestly and are the remaining work before an exit-gate claim:
 
-1. **Compliance DENY-set non-membership (spec §11.1).** Allow-set membership is
-   enforced everywhere; deny-set non-membership (a sorted deny-tree + in-circuit
-   exclusion proof) is not yet implemented. The `compliance_membership` circuit
-   directory is a scoped placeholder (README only).
+1. **Compliance DENY-set — spend-path integration (spec §11.1).** Allow-set
+   membership is enforced on every spend path. The `compliance_membership`
+   circuit now implements deny-set NON-membership (sorted deny-tree + adjacent-
+   leaf range proof) plus allow-membership and policy binding, and is tested
+   (allowed+not-denied verifies; denied / not-allowed / wrong-root fail closed).
+   What remains is wiring the deny check into the spend-path circuits
+   (withdraw/transfer/MPC) — a breaking public-signal change to those already-
+   built circuits — and enforcing a bounded (< 2^252) label range protocol-wide.
 
 2. **Testnet E2E product wiring (spec §12, Phase 8).** The contract primitives,
    circuits, and backend crypto for every flow are built and unit/contract/

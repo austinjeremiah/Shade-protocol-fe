@@ -35,7 +35,7 @@ function readRetry(contractId: string, method: string, args: string[] = []): str
 const poolRead = (m: string) => readRetry(pool, m);
 const userUsdc = () => BigInt(readRetry(sac, "balance", ["--id", userPub]));
 
-// --- #1 Build an anonymity set: 1 real funded note + DECOYS decoy commitments. ---
+// Build an anonymity set: 1 real funded note + DECOYS decoy commitments. ---
 // In production every leaf is an independent funded user deposit; here decoys are
 // real Poseidon commitments registered on-chain (auditable) to form a k>1 set so
 // the withdrawal proves "I own one of K notes" without revealing which.
@@ -46,7 +46,7 @@ const decoys = Array.from({ length: DECOYS }, (_, i) => generateCoin(`shade_deco
 const leafSet = [realCoin.commitmentDecimal, ...decoys.map((d) => d.commitmentDecimal)];
 results.push({ name: "#1 anonymity set built", ok: leafSet.length > 1, detail: `k=${leafSet.length} (1 real + ${DECOYS} decoys), fixed denom ${realCoin.value7dp} (7dp)` });
 
-// #4 association set containing the real note's label; set it on-chain as the ASP root.
+// association set containing the real note's label; set it on-chain as the ASP root.
 const assoc = buildAssociationSet(realCoin, SCRATCH, "zkw");
 sorobanInvoke({ contractId: pool, secret: poolAdminSecret, method: "set_association_root", args: ["--association_root", bytesToCliHex(assoc.rootHex)], rpcUrl: rpc, passphrase: pass });
 results.push({ name: "#4 ASP association root set on-chain", ok: true, detail: assoc.rootHex.slice(0, 18) + "..." });
@@ -70,8 +70,8 @@ const inbound = await runCctpInbound(env, {
 results.push({ name: "CCTP fund pool (real note)", ok: true, detail: `${inbound.burnTxHash.slice(0, 14)}... leaf ${inbound.leafIndex}` });
 
 // 3) Register decoy commitments to grow the tree; each needs a full DepositNoteMint proof.
-//    Decoys use synthetic CCTP params (no real USDC) — valid proofs for the circuit,
-//    and we only ever withdraw the REAL note so no USDC shortfall is triggered.
+// Decoys use synthetic CCTP params (no real USDC) — valid proofs for the circuit,
+// and we only ever withdraw the REAL note so no USDC shortfall is triggered.
 const decoyPolicyHex = "0x" + createHash("sha256").update("shade:decoy-policy:v1").digest("hex").slice(0, 64);
 const decoyBurnTx = "0x" + createHash("sha256").update("decoy-burn-placeholder").digest("hex");
 for (let i = 0; i < decoys.length; i++) {
@@ -128,7 +128,7 @@ for (let i = 0; i < 10; i++) {
 }
 
 // 4) Build the withdrawal proof against the FULL k-leaf tree (real note hidden among decoys).
-//    P1.5: bind operation=WITHDRAW_PUBLIC, recipient=userPub, a relayer fee, and a deadline.
+// bind operation=WITHDRAW_PUBLIC, recipient=userPub, a relayer fee, and a deadline.
 const RELAYER_FEE = process.env.ZKW_FEE_7DP ?? "100000"; // 0.01 USDC
 const binding = {
   operationType: "1",
@@ -159,7 +159,7 @@ const withdraw = sorobanInvoke({
   rpcUrl: rpc, passphrase: pass
 });
 results.push({ name: "on-chain withdraw (verify + domain + ASP + nullifier + release)", ok: !!withdraw.txHash, detail: withdraw.txHash });
-// P1.5: recipient receives NET = value - relayerFee; the fee stays in the pool.
+// recipient receives NET = value - relayerFee; the fee stays in the pool.
 const netExpected = BigInt(realCoin.value7dp) - BigInt(RELAYER_FEE);
 let received = 0n;
 for (let i = 0; i < 10; i++) { received = userUsdc() - userBefore; if (received >= netExpected) break; sleepSync(3000); }

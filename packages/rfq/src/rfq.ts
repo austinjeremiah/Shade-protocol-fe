@@ -1,7 +1,7 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 
-// ---- RFQ state machine ------------------------------------------------------
+// - RFQ state machine ------------------------------------------------------
 export const RFQ_STATES = [
   "INTENT_CREATED",
   "INTENT_ENCRYPTED",
@@ -70,11 +70,11 @@ export function signQuoteStellar(quoteHashHex: string, stellarSecret: string): {
   return { sig: sig.toString("hex"), pubkey: Buffer.from(StrKey.decodeEd25519PublicKey(kp.publicKey())).toString("hex") };
 }
 
-// ---- Phase 3: atomic USDC->XLM swap term binding --------------------------
+// - atomic USDC->XLM swap term binding --------------------------
 // The solver signs the EXACT swap terms the contract (rfq_settle_atomic_swap)
 // recomputes and verifies. Byte layout MUST match the contract:
-//   swap_hash = sha256( quoteHash(32) ‖ outputAssetId(32) ‖ quotedOutput(i128 BE,16)
-//                       ‖ minOutput(16) ‖ priceScaled(16) ‖ recipientHash(32) )
+// swap_hash = sha256(quoteHash(32) ‖ outputAssetId(32) ‖ quotedOutput(i128 BE,16)
+// ‖ minOutput(16) ‖ priceScaled(16) ‖ recipientHash(32) )
 // recipientHash = [0x00, sha256(recipient strkey as 56 UTF-8 bytes)[0..31]]
 // (the contract's hash_to_field(sha256(strkey))).
 export const PRICE_SCALE = 1_000_000_000n;
@@ -120,7 +120,7 @@ export function signAtomicSwap(terms: AtomicSwapTerms, stellarSecret: string): {
   return { swapHash, ...signQuoteStellar(swapHash, stellarSecret) };
 }
 
-// Fixed-point rule the contract enforces (spec §7.6).
+// Fixed-point rule the contract enforces (spec .
 export function quotedFromPrice(inputAmount7dp: bigint, priceScaled: bigint): bigint {
   return (inputAmount7dp * priceScaled) / PRICE_SCALE;
 }

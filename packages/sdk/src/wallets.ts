@@ -1,7 +1,7 @@
 // Wallet adapters — thin signing interfaces over Freighter (Stellar) and any EVM signer.
 // Defined as interfaces so callers can bring their own implementation (ethers, viem, etc.).
 
-// ---- Stellar / Freighter --------------------------------------------------------
+// - Stellar / Freighter --------------------------------------------------------
 
 // Minimal Freighter window API (avoids a hard dependency on @stellar/freighter-api).
 export interface FreighterApi {
@@ -55,7 +55,7 @@ export class FreighterAdapter {
   }
 }
 
-// ---- EVM -----------------------------------------------------------------------
+// - EVM -----------------------------------------------------------------------
 
 // Compatible with ethers v6 Signer, viem WalletClient, and any wallet exposing
 // getAddress + signMessage. Callers wire up their own signer and pass it in.

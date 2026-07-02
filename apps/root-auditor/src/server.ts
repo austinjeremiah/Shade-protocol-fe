@@ -2,7 +2,7 @@ import "dotenv/config";
 import Fastify from "fastify";
 import { runAudit } from "./run.js";
 
-// P1.9 root-auditor HTTP surface. The API/relayer can call /v1/audit before
+// root-auditor HTTP surface. The API/relayer can call /v1/audit before
 // allowing spends and refuse any spend when status != OK (ROOT_MISMATCH_CRITICAL).
 const app = Fastify({ logger: true });
 

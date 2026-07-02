@@ -1,5 +1,5 @@
 #![no_std]
-//! DEPRECATED (P1.1). Standalone Merkle tree for the legacy `shade_vault`. The
+//! DEPRECATED (. Standalone Merkle tree for the legacy `shade_vault`. The
 //! canonical `shielded_pool` (ShadePool) embeds its own lean-imt, so this contract
 //! is NOT on the active path. Kept for historical reference only.
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, symbol_short};

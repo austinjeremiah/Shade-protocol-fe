@@ -1,5 +1,5 @@
 #![cfg(test)]
-//! P3 #20 / #23 adversarial tests: a single guardian must not be able to
+//! / adversarial tests: a single guardian must not be able to
 //! pause or upgrade a target alone when threshold > 1, and an upgrade must
 //! not execute before its timelock elapses or after it's been cancelled.
 

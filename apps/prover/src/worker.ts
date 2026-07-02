@@ -49,7 +49,7 @@ export async function processProofJob(queue: JobQueue, job: ServiceJob): Promise
 
   let result: Record<string, unknown>;
   if (job.job_type === "private_transfer") {
-    // P2 #14: private_transfer now carries an ASP allow-set binding — require
+    // private_transfer now carries an ASP allow-set binding — require
     // assocPath the same way withdraw does, so a proof can't silently skip
     // the compliance envelope by omitting it.
     if (!p.assocPath) throw new Error(`${job.job_type} requires assocPath`);

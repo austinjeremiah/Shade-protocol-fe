@@ -1,7 +1,7 @@
 import type pg from "pg";
 import type { SignedMatchBatch } from "@shade/mpc-crypto";
 
-// P1 #12: a signed batch must be persisted to mpc_batches regardless of what
+// a signed batch must be persisted to mpc_batches regardless of what
 // triggered the matching round (the 30s auto-timer or a manual API call) —
 // the settler only ever reads from mpc_batches, so an unpersisted batch is a
 // dead end that silently never settles. This is the single persistence path
@@ -31,7 +31,7 @@ export async function persistSignedBatch(
     [batch.matches.length, sessionId]
   );
 
-  // P1 #17: do not persist the plaintext matched amount to mpc_intents. It
+  // do not persist the plaintext matched amount to mpc_intents. It
   // already lives, where operationally necessary, in mpc_batches.matches_json
   // (the committee-signed artifact the relayer/prover need to build the
   // settlement proof and on-chain call). mpc_intents only needs to record

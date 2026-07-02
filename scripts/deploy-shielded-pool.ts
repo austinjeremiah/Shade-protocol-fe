@@ -4,21 +4,21 @@ import { resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
-// Phase 2: field asset id for a token/SAC contract = int(sha256(strkey)[:31]),
+// field asset id for a token/SAC contract = int(sha256(strkey)[:31]),
 // encoded as a bare 32-byte BE hex (leading zero byte). Matches the deposit
 // proof's assetIdHash signal and the contract's hash_to_field / recipient_hash.
 function assetIdBareHex(tokenContract: string): string {
   return "00" + createHash("sha256").update(tokenContract).digest("hex").slice(0, 62);
 }
 
-// C2: deploy the CANONICAL ShadePool stack (the active settlement path) and write
-// its contract IDs to .env.generated. This codifies the manual P1.5–P1.8 deploy:
-//   - VerifierWithdraw (proof_verifiers, withdraw_public vk, admin-gated)
-//   - VerifierTransfer (proof_verifiers, private_transfer vk)
-//   - VerifierDepositNoteMint (proof_verifiers, deposit_note_mint vk)
-//   - ShieldedPool (constructor: admin, usdc, withdraw verifier, nullreg, depth, pool_id, chain_id)
-//   - wiring: nullreg.set_authorized_spender(pool), pool.set_cctp_messenger,
-//             set_transfer_verifier, set_deposit_verifier
+// deploy the CANONICAL ShadePool stack (the active settlement path) and write
+// its contract IDs to .env.generated. This codifies the manual –deploy:
+// VerifierWithdraw (proof_verifiers, withdraw_public vk, admin-gated)
+// VerifierTransfer (proof_verifiers, private_transfer vk)
+// VerifierDepositNoteMint (proof_verifiers, deposit_note_mint vk)
+// ShieldedPool (constructor: admin, usdc, withdraw verifier, nullreg, depth, pool_id, chain_id)
+// wiring: nullreg.set_authorized_spender(pool), pool.set_cctp_messenger,
+// set_transfer_verifier, set_deposit_verifier
 // Re-deploys the pool when SHADE_REDEPLOY_POOL=1 (or it is absent); verifiers are
 // reused if already set. The legacy shade_vault/commitment_tree stack is NOT used.
 
@@ -73,7 +73,7 @@ if (redeployPool) {
   invoke(deployer, pool, ["set_cctp_messenger", "--token_messenger_minter", TMM]);
   invoke(deployer, pool, ["set_transfer_verifier", "--verifier", transferV]);
   invoke(deployer, pool, ["set_deposit_verifier", "--verifier", depositV]);
-  // Phase 2: register the pool's assets so deposit/withdraw per-asset accounting
+  // register the pool's assets so deposit/withdraw per-asset accounting
   // and token selection work (unregistered assets fail closed).
   invoke(deployer, pool, ["register_asset", "--asset_id", assetIdBareHex(usdc), "--token", usdc]);
   const xlmSac = env.STELLAR_TESTNET_XLM_SAC_CONTRACT;
@@ -88,7 +88,7 @@ if (redeployPool) {
 }
 console.log("Canonical ShadePool deploy PASS");
 
-// ---- helpers ----
+// - helpers ----
 function deploy(wasm: string, ctorArgs: string[], secret: string): string {
   if (!existsSync(wasm)) throw new Error(`missing ${wasm}; run npm run contracts:build`);
   for (let i = 0; i < 4; i++) {

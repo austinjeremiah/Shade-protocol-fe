@@ -19,7 +19,7 @@ const missing = requireKeys(env, [
 ]);
 results.push({ name: "required env", ok: missing.length === 0 && !!privateKey, detail: missing.concat(privateKey ? [] : ["ETH_PRIVATE_KEY"]).join(", ") || "present" });
 
-// --- Pre-burn negative tests (must be blocked BEFORE any burn) ---------------
+// Pre-burn negative tests (must be blocked BEFORE any burn) ---------------
 function expectReject(name: string, fn: () => void) {
   try {
     fn();
@@ -57,7 +57,7 @@ if (preflightFailed) {
   failIfAny(results);
 }
 
-// --- Real burn -> attestation -> mint_and_forward -> vault deposit -----------
+// Real burn -> attestation -> mint_and_forward -> vault deposit -----------
 const amount6 = BigInt(process.env.CCTP_AMOUNT_6DP ?? "1000000"); // default 1.0 USDC
 const note = generateNotePreimage({
   assetId: "USDC:Stellar:SAC",
@@ -90,7 +90,7 @@ try {
   results.push({ name: "CCTP inbound flow", ok: false, detail: (e as Error).message });
 }
 
-// --- Best-effort persistence -------------------------------------------------
+// Best-effort persistence -------------------------------------------------
 if (out && env.DATABASE_URL) {
   try {
     const pool = new pg.Pool({ connectionString: env.DATABASE_URL });

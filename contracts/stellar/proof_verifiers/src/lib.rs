@@ -1,6 +1,6 @@
 #![no_std]
 //! Real Groth16 verifier over BLS12-381, using Soroban's native BLS12-381 host
-//! functions (env.crypto().bls12_381()). Serialization is byte-compatible with
+//! functions (env.crypto.bls12_381). Serialization is byte-compatible with
 //! arkworks `serialize_uncompressed`, matching the official Stellar
 //! `circom2soroban` tool and `groth16_verifier` / `privacy-pools` examples.
 //!

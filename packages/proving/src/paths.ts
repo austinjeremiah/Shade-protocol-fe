@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 
 // Central, env-overridable path resolution. Fresh clones work with no edits:
-// every path defaults relative to SHADE_ROOT (the repo root = process.cwd()).
+// every path defaults relative to SHADE_ROOT (the repo root = process.cwd).
 export const SHADE_ROOT = process.env.SHADE_ROOT || process.cwd();
 
 export const SHADE_SCRATCH_DIR =

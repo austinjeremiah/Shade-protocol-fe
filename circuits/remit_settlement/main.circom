@@ -5,29 +5,26 @@ include "merkleProof.circom";
 include "poseidon255.circom";
 
 // Shade RemitSettlement circuit.
-//
 // Proves note ownership and authorises a shielded payout to a fiat corridor.
 // The user privately owns a note, spends it (nullifier), and binds the payout to
 // a specific SEP-38 quote, corridor, and recipient hash. The fiat amount and
 // corridor are enforced by the Soroban contract against the anchor's signed quote.
-//
 // Reuses the same note commitment scheme as withdraw_public / private_transfer
 // (Poseidon(value, label, Poseidon(nullifier, secret))), the same domain-separated
-// nullifier (#3), and the same Merkle membership proof.
-//
+// nullifier (and the same Merkle membership proof.
 // Public-signal order (output first, then declared `public` inputs):
-//   [0]  nullifierHash     domain-separated input nullifier = Poseidon(nullifier, poolId, chainId)
-//   [1]  operationType     == REMIT_SETTLE = 5; contract enforces
-//   [2]  remitAmount7dp    amount to remit in 7dp (contract verifies <= note value)
-//   [3]  recipientHash     int(sha256(recipient_bank_account_hash)[:31])
-//   [4]  quoteIdHash       int(sha256(sep38_quote_id)[:31]); anchor quote binding
-//   [5]  corridorHash      int(sha256(corridor_id)[:31]); e.g. "MXN:STP", "INR:IMPS"
-//   [6]  deadlineLedger    quote validity window; contract rejects if expired
-//   [7]  stateRoot         Merkle root of the shielded pool commitment tree
-//   [8]  associationRoot   ASP allow-set root; circuit enforces hard membership
-//   [9]  policyIdHash      int(sha256(policy_id)[:31]); compliance policy binding
-//   [10] poolId            domain separator (this pool)
-//   [11] chainId           domain separator (this chain)
+// [0] nullifierHash domain-separated input nullifier = Poseidon(nullifier, poolId, chainId)
+// [1] operationType == REMIT_SETTLE = 5; contract enforces
+// [2] remitAmount7dp amount to remit in 7dp (contract verifies <= note value)
+// [3] recipientHash int(sha256(recipient_bank_account_hash)[:31])
+// [4] quoteIdHash int(sha256(sep38_quote_id)[:31]); anchor quote binding
+// [5] corridorHash int(sha256(corridor_id)[:31]); e.g. "MXN:STP", "INR:IMPS"
+// [6] deadlineLedger quote validity window; contract rejects if expired
+// [7] stateRoot Merkle root of the shielded pool commitment tree
+// [8] associationRoot ASP allow-set root; circuit enforces hard membership
+// [9] policyIdHash int(sha256(policy_id)[:31]); compliance policy binding
+// [10] poolId domain separator (this pool)
+// [11] chainId domain separator (this chain)
 
 template RemitSettlement(treeDepth, associationDepth) {
     // PUBLIC INPUTS
@@ -72,7 +69,7 @@ template RemitSettlement(treeDepth, associationDepth) {
     stateRootChecker.siblings  <== stateSiblings;
     stateRoot === stateRootChecker.out;
 
-    // 2) Domain-separated nullifier (#3): Poseidon(nullifier, poolId, chainId).
+    // 2) Domain-separated nullifier (Poseidon(nullifier, poolId, chainId).
     component nullifierHasher = Poseidon255(3);
     nullifierHasher.in[0] <== nullifier;
     nullifierHasher.in[1] <== poolId;
@@ -97,8 +94,8 @@ template RemitSettlement(treeDepth, associationDepth) {
     _ <== remitRange.out;
 
     // 5) Bind all remittance-specific public inputs into the constraint system.
-    //    The contract enforces each arg == proof.public_signal; binding here
-    //    ensures a proof cannot be replayed with different corridor/recipient.
+    // The contract enforces each arg == proof.public_signal; binding here
+    // ensures a proof cannot be replayed with different corridor/recipient.
     signal opBind       <== operationType * operationType;
     signal recipBind    <== recipientHash * recipientHash;
     signal quoteBind    <== quoteIdHash * quoteIdHash;

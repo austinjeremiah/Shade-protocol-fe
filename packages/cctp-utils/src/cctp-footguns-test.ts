@@ -1,6 +1,6 @@
 import { validateInboundRoute, usdc6ToStellar7, stellar7ToUsdc6, encodeStellarForwardHook, stellarContractToBytes32, LOCKED_CCTP } from "./index.js";
 
-// Phase 4 (spec §8.4): each CCTP Stellar footgun must be blocked. These are the
+// (each CCTP Stellar footgun must be blocked. These are the
 // failing-first guards for the inbound route + 6<->7 decimal scaling.
 
 let failed = 0;
@@ -18,13 +18,13 @@ const FWD = LOCKED_CCTP.stellarCctpForwarder;         // C... forwarder
 const VAULT = LOCKED_CCTP.stellarTokenMessengerMinter; // any other C... contract
 const G_ACCOUNT = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"; // a G address
 
-// --- happy route ---
+// happy route ---
 check("valid inbound route accepted", (() => {
   try { validateInboundRoute({ destinationDomain: LOCKED_CCTP.stellarDomain, mintRecipient: FWD, destinationCaller: FWD, forwardRecipient: VAULT }); return true; }
   catch { return false; }
 })());
 
-// --- footguns blocked (spec §8.4) ---
+// footguns blocked (spec ---
 rejects("mintRecipient = user G account -> blocked", () =>
   validateInboundRoute({ destinationDomain: LOCKED_CCTP.stellarDomain, mintRecipient: G_ACCOUNT, destinationCaller: FWD, forwardRecipient: VAULT }));
 rejects("G/M/C confusion: destinationCaller G account -> blocked", () =>
@@ -42,14 +42,14 @@ rejects("stellarContractToBytes32 rejects a G account (32-byte payload confusion
 rejects("encodeStellarForwardHook rejects a G account", () =>
   encodeStellarForwardHook(G_ACCOUNT));
 
-// --- 6 <-> 7 decimal scaling (spec §8.4) ---
+// 6 <-> 7 decimal scaling (spec ---
 check("6->7 scaling exact: 1.000000 USDC (1e6) -> 1e7 (7dp)", usdc6ToStellar7(1_000_000n) === 10_000_000n);
 check("6->7 scaling exact: dust-free multiple", usdc6ToStellar7(1_234_567n) === 12_345_670n);
 check("7->6 exact when divisible by 10", stellar7ToUsdc6(12_345_670n) === 1_234_567n);
 rejects("7->6 rejects a 7th-decimal dust amount (not representable in 6dp)", () =>
   stellar7ToUsdc6(12_345_671n)); // trailing 1 in the 7th decimal cannot round-trip
 
-// --- forwarder bytes32 is well-formed (mintRecipient/destinationCaller payload) ---
+// forwarder bytes32 is well-formed (mintRecipient/destinationCaller payload) ---
 check("stellarContractToBytes32(forwarder) is 0x + 64 hex", /^0x[0-9a-f]{64}$/.test(stellarContractToBytes32(FWD)));
 
 if (failed > 0) {

@@ -5,26 +5,24 @@ include "merkleProof.circom";
 include "poseidon.circom";
 
 // Shade Withdraw / settlement circuit.
-//
 // Privacy upgrades over the upstream privacy-pools Withdraw:
-//  - #3 Domain-separated nullifier: the public nullifierHash binds pool_id and
-//       chain_id, so a proof/nullifier for one pool or chain cannot be replayed
-//       in another. Matches the bible: nullifier = Poseidon(secret, .., pool_id,
-//       chain_id, domain_sep).
-//  - #4 ZK compliance membership: the association-set membership check is
-//       ENFORCED (the caller supplies a real, non-zero associationRoot and a
-//       valid Merkle path for the note's label).
+// Domain-separated nullifier: the public nullifierHash binds pool_id and
+// chain_id, so a proof/nullifier for one pool or chain cannot be replayed
+// in another. Matches the bible: nullifier = Poseidon(secret, .., pool_id,
+// chain_id, domain_sep).
+// ZK compliance membership: the association-set membership check is
+// ENFORCED (the caller supplies a real, non-zero associationRoot and a
+// valid Merkle path for the note's label).
 template Withdraw(treeDepth, associationDepth) {
     // PUBLIC SIGNALS. Final public-signal order (output first, then declared
     // inputs in the `public [...]` list below):
-    //   [0] nullifierHash  [1] operationType  [2] withdrawnValue
-    //   [3] recipientHash   [4] relayerFee     [5] deadlineLedger
-    //   [6] stateRoot       [7] associationRoot[8] poolId  [9] chainId
-    //   [10] quoteHash      [11] intentHash    [12] fillReceiptHash  (P1.6 RFQ)
-    //   [13] destinationDomain [14] destinationRecipient [15] maxFee
-    //   [16] minFinalityThreshold                              (P1.7 CCTP)
-    //
-    // P1.6: signals [10..12] are RFQ-settlement bindings; P1.7: signals [13..16]
+    // [0] nullifierHash [1] operationType [2] withdrawnValue
+    // [3] recipientHash [4] relayerFee [5] deadlineLedger
+    // [6] stateRoot [7] associationRoot[8] poolId [9] chainId
+    // [10] quoteHash [11] intentHash [12] fillReceiptHash (RFQ)
+    // [13] destinationDomain [14] destinationRecipient [15] maxFee
+    // [16] minFinalityThreshold (CCTP)
+    // signals [10..12] are RFQ-settlement bindings; signals [13..16]
     // are WithdrawCCTP destination bindings. All are APPENDED so the existing
     // withdraw/cctp/rfq public-signal indices [0..9] are unchanged. Each op sets
     // the signals it doesn't use to 0; the contract enforces arg==proof per op.
@@ -37,14 +35,14 @@ template Withdraw(treeDepth, associationDepth) {
     signal input associationRoot;       // ASP allowlist root (MUST be non-zero)
     signal input poolId;                // domain separator: this pool
     signal input chainId;               // domain separator: this chain
-    signal input quoteHash;             // P1.6 RFQ: int(sha256(quote)[:31]); contract binds arg
-    signal input intentHash;            // P1.6 RFQ: int(sha256(intent)[:31]); contract binds arg
-    signal input fillReceiptHash;       // P1.6 RFQ: int(sha256(fill_tx)[:31]); contract binds arg
-    signal input destinationDomain;     // P1.7 CCTP: dest domain; contract binds arg
-    signal input destinationRecipient;  // P1.7 CCTP: int(recipient32); contract binds arg
-    signal input maxFee;                // P1.7 CCTP: max fee; contract binds arg
-    signal input minFinalityThreshold;  // P1.7 CCTP: min finality threshold; contract binds arg
-    signal input assetId;               // Phase 2: note asset id; contract binds arg + selects token
+    signal input quoteHash;             // RFQ: int(sha256(quote)[:31]); contract binds arg
+    signal input intentHash;            // RFQ: int(sha256(intent)[:31]); contract binds arg
+    signal input fillReceiptHash;       // RFQ: int(sha256(fill_tx)[:31]); contract binds arg
+    signal input destinationDomain;     // CCTP: dest domain; contract binds arg
+    signal input destinationRecipient;  // CCTP: int(recipient32); contract binds arg
+    signal input maxFee;                // CCTP: max fee; contract binds arg
+    signal input minFinalityThreshold;  // CCTP: min finality threshold; contract binds arg
+    signal input assetId;               // note asset id; contract binds arg + selects token
 
     // PRIVATE SIGNALS
     signal input label;                 // hash(scope, nonce)
@@ -70,7 +68,7 @@ template Withdraw(treeDepth, associationDepth) {
     commitmentHasher.nullifier <== nullifier;
     signal commitment <== commitmentHasher.commitment;
 
-    // #3 domain-separated nullifier hash = Poseidon(nullifier, poolId, chainId)
+    // domain-separated nullifier hash = Poseidon(nullifier, poolId, chainId)
     component nullifierHasher = Poseidon255(3);
     nullifierHasher.in[0] <== nullifier;
     nullifierHasher.in[1] <== poolId;
@@ -84,7 +82,7 @@ template Withdraw(treeDepth, associationDepth) {
     stateRootChecker.siblings <== stateSiblings;
     stateRoot === stateRootChecker.out;
 
-    // #4 ENFORCED association-set membership: label must be in the association tree.
+    // ENFORCED association-set membership: label must be in the association tree.
     component associationRootChecker = MerkleProof(associationDepth);
     associationRootChecker.leaf <== label;
     associationRootChecker.leafIndex <== labelIndex;
@@ -117,13 +115,13 @@ template Withdraw(treeDepth, associationDepth) {
     signal recBind <== recipientHash * recipientHash;
     signal dlBind <== deadlineLedger * deadlineLedger;
 
-    // P1.6 RFQ bindings: pass-through public inputs the contract enforces
+    // RFQ bindings: pass-through public inputs the contract enforces
     // (quote_hash / intent_hash / fill_receipt_hash arg == proof signal).
     signal qhBind <== quoteHash * quoteHash;
     signal ihBind <== intentHash * intentHash;
     signal frBind <== fillReceiptHash * fillReceiptHash;
 
-    // P1.7 CCTP destination bindings: pass-through public inputs the contract
+    // CCTP destination bindings: pass-through public inputs the contract
     // enforces (destination_domain / destination_recipient / max_fee /
     // min_finality_threshold arg == proof signal).
     signal ddBind <== destinationDomain * destinationDomain;
@@ -131,7 +129,7 @@ template Withdraw(treeDepth, associationDepth) {
     signal mfBind <== maxFee * maxFee;
     signal ftBind <== minFinalityThreshold * minFinalityThreshold;
 
-    // Phase 2: assetId is already constrained via the commitment; bind it as a
+    // assetId is already constrained via the commitment; bind it as a
     // pass-through public input too so the contract can enforce arg == signal.
     signal aidBind <== assetId * assetId;
 }

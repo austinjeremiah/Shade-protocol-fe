@@ -4,8 +4,7 @@ include "commitment.circom";
 include "poseidon.circom";
 include "bitify.circom";
 
-// Shade DepositNoteMint circuit (P1.8).
-//
+// Shade DepositNoteMint circuit (.
 // Binds a freshly-minted CCTP deposit to the note commitment that is inserted
 // into the shielded pool. The note OPENING (value/label/nullifier/secret) is
 // private; the circuit outputs the commitment so it is cryptographically tied to
@@ -13,22 +12,21 @@ include "bitify.circom";
 // amount. Every CCTP-message field is a public input the contract checks against
 // the real Circle message before inserting the leaf, so a registrar cannot insert
 // a commitment that doesn't correspond to the deposit it claims.
-//
 // Public-signal order (output first, then declared inputs):
-//   [0]  commitment              (note leaf; output, bound to the private opening)
-//   [1]  operationType           (== DEPOSIT_NOTE_MINT = 4)
-//   [2]  sourceDomain
-//   [3]  destinationDomain
-//   [4]  cctpNonceHash           (int(sha256/keccak(message)[:31]))
-//   [5]  burnTxHashHash          (int(sha256(burn_tx)[:31]))
-//   [6]  amount6dp               (USDC 6dp burned)
-//   [7]  amount7dp               (USDC 7dp minted into the pool == note value)
-//   [8]  assetIdHash             (int(sha256(usdc_sac strkey)[:31]))
-//   [9]  recipientPool           (int(sha256(pool strkey)[:31]))
-//   [10] encryptedNotePayloadHash
-//   [11] policyIdHash
-//   [12] poolId                  (#3 domain separator)
-//   [13] chainId                 (#3 domain separator)
+// [0] commitment (note leaf; output, bound to the private opening)
+// [1] operationType (== DEPOSIT_NOTE_MINT = 4)
+// [2] sourceDomain
+// [3] destinationDomain
+// [4] cctpNonceHash (int(sha256/keccak(message)[:31]))
+// [5] burnTxHashHash (int(sha256(burn_tx)[:31]))
+// [6] amount6dp (USDC 6dp burned)
+// [7] amount7dp (USDC 7dp minted into the pool == note value)
+// [8] assetIdHash (int(sha256(usdc_sac strkey)[:31]))
+// [9] recipientPool (int(sha256(pool strkey)[:31]))
+// [10] encryptedNotePayloadHash
+// [11] policyIdHash
+// [12] poolId (domain separator)
+// [13] chainId (domain separator)
 template DepositNoteMint() {
     // PUBLIC INPUTS
     signal input operationType;
@@ -57,7 +55,7 @@ template DepositNoteMint() {
     // Recompute the commitment from the opening (formula matches coinutils +
     // the withdraw/transfer circuits: Poseidon(value,label,Poseidon(nullifier,secret))).
     component commitmentHasher = CommitmentHasher();
-    commitmentHasher.assetId <== assetIdHash;   // Phase 2: bind the asset into the note
+    commitmentHasher.assetId <== assetIdHash;   // bind the asset into the note
     commitmentHasher.value <== value;
     commitmentHasher.label <== label;
     commitmentHasher.secret <== secret;

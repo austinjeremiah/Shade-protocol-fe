@@ -5,7 +5,7 @@
 //! `shielded_pool::rfq_settle`, which verifies a real Groth16 proof and
 //! spends the nullifier. Do not add a settlement entrypoint here — a prior
 //! `settle_rfq(proof, public_inputs)` existed that only hashed its inputs and
-//! verified nothing (P1 #11); it had zero callers and was removed rather than
+//! verified nothing (; it had zero callers and was removed rather than
 //! left as a decorative, unsafe-looking settlement path.
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String, symbol_short};
 

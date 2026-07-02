@@ -1,7 +1,7 @@
 import { matchPricedPair, matchPricedIntents, type PricedIntent } from "./coordinator.js";
 import { computeBatchHash } from "@shade/mpc-crypto";
 
-// Phase 6 (spec §10.4/§10.6): priced cross-asset matching + batch-hash price binding.
+// (spec /: priced cross-asset matching + batch-hash price binding.
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = ""): void {
@@ -17,7 +17,7 @@ const PRICE = 1_000_000_000n; // 1e9
 const a: PricedIntent = { intentId: "A", inputAsset: USDC, outputAsset: XLM, amount: 4_000_000n, minOutput: 1_900_000n, limitPriceScaled: 500_000_000n };
 const b: PricedIntent = { intentId: "B", inputAsset: XLM, outputAsset: USDC, amount: 2_000_000n, minOutput: 3_900_000n, limitPriceScaled: 2_000_000_000n }; // wants >= 2 USDC per XLM
 
-// --- crossing pair matches with price bound ---
+// crossing pair matches with price bound ---
 {
   const m = matchPricedPair(a, b);
   check("crossing priced pair matches", m !== null);
@@ -29,31 +29,31 @@ const b: PricedIntent = { intentId: "B", inputAsset: XLM, outputAsset: USDC, amo
   }
 }
 
-// --- non-crossing: same-direction (both spend USDC) rejected ---
+// non-crossing: same-direction (both spend USDC) rejected ---
 {
   const b2: PricedIntent = { ...b, inputAsset: USDC, outputAsset: XLM };
   check("non-crossing (same-direction) pair rejected", matchPricedPair(a, b2) === null);
 }
 
-// --- non-crossing: B doesn't spend the exact Y A receives (no partial fills) ---
+// non-crossing: B doesn't spend the exact Y A receives (no partial fills) ---
 {
   const b3: PricedIntent = { ...b, amount: 1_500_000n };
   check("size-mismatch (partial fill) rejected", matchPricedPair(a, b3) === null);
 }
 
-// --- non-crossing: B's limit price not met ---
+// non-crossing: B's limit price not met ---
 {
   const bGreedy: PricedIntent = { ...b, limitPriceScaled: 3_000_000_000n }; // wants >= 3 USDC per XLM (unmet)
   check("B limit price unmet rejected", matchPricedPair(a, bGreedy) === null);
 }
 
-// --- greedy over a set ---
+// greedy over a set ---
 {
   const matches = matchPricedIntents([a, b, { ...a, intentId: "C" }]);
   check("greedy matches exactly one pair (A-B), C unmatched", matches.length === 1 && matches[0].intentAId === "A" && matches[0].intentBId === "B");
 }
 
-// --- §10.5: price is bound into the batch hash; changing it changes the hash ---
+// price is bound into the batch hash; changing it changes the hash ---
 {
   const m = matchPricedPair(a, b)!;
   const row = { intentAId: m.intentAId, intentBId: m.intentBId, matchedAmount7dp: m.matchedAmountA, inputAsset: m.inputAssetA, outputAsset: m.outputAssetA, priceScaled: m.priceScaled, assetIn: m.inputAssetA, assetOut: m.outputAssetA };
