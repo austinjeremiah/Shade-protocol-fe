@@ -172,6 +172,141 @@ fn mpc_settle_rejects_duplicate_signer_replay() {
     assert!(result.is_err(), "duplicate signer must not satisfy the committee threshold");
 }
 
+// ---- Phase 4 inbound CCTP duplicate-nonce (spec §8.4) ----
+
+#[test]
+fn cctp_deposit_duplicate_nonce_no_second_note() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let verifier = env.register(MockVerifierAccept, ());
+    let nullreg = env.register(MockNullifierRegistry, ());
+    let pool_id = env.register(
+        ShieldedPool,
+        (admin.clone(), Address::generate(&env), verifier, nullreg, 12u32, 1u32, 27u32),
+    );
+    let pool = ShieldedPoolClient::new(&env, &pool_id);
+    let dep_verifier = env.register(MockVerifierAccept, ());
+    pool.set_deposit_verifier(&dep_verifier);
+
+    // Register the deposited asset (asset_id = recipient_hash(token)).
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let asset = sac.address();
+    let asset_id = recip_hash(&env, &asset);
+    pool.register_asset(&BytesN::from_array(&env, &asset_id), &asset);
+
+    let nonce = BytesN::from_array(&env, &[0xA1u8; 32]);
+    let enc = BytesN::from_array(&env, &[0xB2u8; 32]);
+    let policy = BytesN::from_array(&env, &[0xC3u8; 32]);
+    let commitment = BytesN::from_array(&env, &[0xD4u8; 32]);
+    let new_root = BytesN::from_array(&env, &[0xE5u8; 32]);
+    let (amount7, amount6): (u128, u128) = (1_000_000, 100_000); // 100_000*10 == 1_000_000
+
+    // 14-word deposit signals bound to the args the contract checks.
+    let words: [[u8; 32]; 14] = [
+        commitment.to_array(),          // [0]
+        enc_u128(4),                    // [1] op = DEPOSIT_NOTE_MINT
+        enc_u128(3),                    // [2] sourceDomain
+        enc_u128(27),                   // [3] destinationDomain = STELLAR_CCTP_DOMAIN
+        hash_field(&nonce.to_array()),  // [4] cctpNonceHash
+        enc_u128(1),                    // [5] burnTxHash (nonzero; auditability only)
+        enc_u128(amount6),              // [6] amount6dp
+        enc_u128(amount7),              // [7] amount7dp
+        asset_id,                       // [8] assetIdHash = recipient_hash(asset)
+        recip_hash(&env, &pool_id),     // [9] recipientPool = recipient_hash(pool)
+        hash_field(&enc.to_array()),    // [10] encryptedNotePayloadHash
+        hash_field(&policy.to_array()), // [11] policyIdHash
+        enc_u128(1),                    // [12] poolId
+        enc_u128(27),                   // [13] chainId
+    ];
+    let signals = build_signals(&env, &words);
+    let proof = Bytes::from_array(&env, &[0u8; 8]);
+
+    // First deposit succeeds and records the nonce.
+    let leaf = pool.receive_cctp_deposit(&3u32, &nonce, &asset, &(amount7 as i128), &commitment, &new_root, &enc, &policy, &proof, &signals);
+    assert_eq!(leaf, 0, "first deposit registers leaf 0");
+    assert_eq!(pool.note_supply(&BytesN::from_array(&env, &asset_id)), amount7 as i128, "supply credited once");
+
+    // Replaying the SAME CCTP nonce must be rejected (no second note).
+    let r = pool.try_receive_cctp_deposit(&3u32, &nonce, &asset, &(amount7 as i128), &commitment, &new_root, &enc, &policy, &proof, &signals);
+    assert!(r.is_err(), "a duplicate CCTP nonce must not mint a second note");
+    assert_eq!(pool.note_supply(&BytesN::from_array(&env, &asset_id)), amount7 as i128, "supply unchanged after duplicate");
+}
+
+// ---- Phase 4 outbound CCTP (withdraw_cctp) binding (spec §8.6) ----
+
+/// 18-word withdraw-circuit signals for a CCTP exit (op = WITHDRAW_CCTP) with the
+/// destination bindings at [13..16].
+fn cctp_signals(env: &Env, amount: u128, dest_domain: u128, dest_recip: [u8; 32], max_fee: u128, finality: u128) -> Bytes {
+    let words: [[u8; 32]; 18] = [
+        [1u8; 32],               // [0] nullifierHash
+        enc_u128(2),             // [1] operationType = WITHDRAW_CCTP
+        enc_u128(amount),        // [2] amount
+        [0u8; 32],               // [3] recipientHash (unused here)
+        [0u8; 32],               // [4] relayerFee
+        enc_u128(999_999),       // [5] deadlineLedger
+        [0u8; 32],               // [6] stateRoot (empty, known)
+        [0u8; 32],               // [7] associationRoot (default 0)
+        enc_u128(1),             // [8] poolId
+        enc_u128(27),            // [9] chainId
+        [0u8; 32], [0u8; 32], [0u8; 32], // [10-12] quote/intent/fill
+        enc_u128(dest_domain),   // [13] destinationDomain
+        dest_recip,              // [14] destinationRecipient
+        enc_u128(max_fee),       // [15] maxFee
+        enc_u128(finality),      // [16] minFinalityThreshold
+        [0u8; 32],               // [17] assetId (unused by withdraw_cctp)
+    ];
+    build_signals(env, &words)
+}
+
+#[test]
+fn withdraw_cctp_rejects_unsupported_domain() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    let recip = [0x55u8; 32];
+    // proof + arg both use an unsupported domain (99) -> UnsupportedDomain.
+    let signals = cctp_signals(env, 1_000_000, 99, recip, 0, 2000);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    let r = w.pool.try_withdraw_cctp(&w.to, &proof, &signals, &99u32, &BytesN::from_array(env, &recip), &0i128, &2000u32);
+    assert!(r.is_err(), "an unsupported destination domain must be rejected before burn");
+}
+
+#[test]
+fn withdraw_cctp_rejects_relayer_recipient_mutation() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    let recip = [0x55u8; 32];
+    let signals = cctp_signals(env, 1_000_000, 3, recip, 0, 2000);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // relayer swaps the destination recipient -> WrongDestRecipient.
+    let r = w.pool.try_withdraw_cctp(&w.to, &proof, &signals, &3u32, &BytesN::from_array(env, &[0xEEu8; 32]), &0i128, &2000u32);
+    assert!(r.is_err(), "a relayer-mutated destination recipient must be rejected");
+}
+
+#[test]
+fn withdraw_cctp_rejects_relayer_fee_mutation() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    let recip = [0x55u8; 32];
+    let signals = cctp_signals(env, 1_000_000, 3, recip, 500, 2000);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // relayer inflates max_fee -> WrongMaxFee.
+    let r = w.pool.try_withdraw_cctp(&w.to, &proof, &signals, &3u32, &BytesN::from_array(env, &recip), &9_999i128, &2000u32);
+    assert!(r.is_err(), "a relayer-mutated max_fee must be rejected");
+}
+
+#[test]
+fn withdraw_cctp_rejects_wrong_finality() {
+    let w = setup_withdraw();
+    let env = &w.env;
+    let recip = [0x55u8; 32];
+    let signals = cctp_signals(env, 1_000_000, 3, recip, 0, 2000);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // relayer changes the finality threshold -> WrongFinality.
+    let r = w.pool.try_withdraw_cctp(&w.to, &proof, &signals, &3u32, &BytesN::from_array(env, &recip), &0i128, &1000u32);
+    assert!(r.is_err(), "a mutated min_finality_threshold must be rejected");
+}
+
 // ---- Phase 2 withdraw asset-binding (spec §6.4/§6.6/§6.8) ----
 
 /// Replicate the contract's recipient_hash: sha256(strkey[56]) then hash_to_field

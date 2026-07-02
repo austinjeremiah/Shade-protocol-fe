@@ -34,6 +34,7 @@ const OP_DEPOSIT_NOTE_MINT: i128 = 4; // P1.8 deposit circuit op type
 const OP_RFQ_ATOMIC_SWAP: i128 = 5;   // Phase 3: atomic USDC->XLM RFQ settlement
 const PRICE_SCALE: i128 = 1_000_000_000; // Phase 3 (spec §7.6): fixed-point price scale
 const STELLAR_CCTP_DOMAIN: i128 = 27; // C6: inbound deposits must target the Stellar CCTP domain
+const ARBITRUM_SEPOLIA_DOMAIN: u32 = 3; // Phase 4 (spec §8.6): the only supported outbound CCTP domain on testnet
 
 // Off-chain-root design: the authorized registrar (admin/relayer) maintains the
 // Poseidon incremental Merkle tree off-chain at native speed (the same lean-imt
@@ -96,6 +97,7 @@ pub enum Error {
     SameAssetSwap = 31,     // Phase 3: RFQ swap input asset == output asset
     UnderDelivered = 32,    // Phase 3: quoted output < min output
     WrongPrice = 33,        // Phase 3: quoted output != floor(input * priceScaled / PRICE_SCALE)
+    UnsupportedDomain = 34, // Phase 4: outbound CCTP destination domain is not supported
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -569,6 +571,11 @@ impl ShieldedPool {
         // P1.7 deadline must not be expired.
         if (env.ledger().sequence() as i128) > deadline_ledger {
             panic_err(&env, Error::Expired);
+        }
+        // Phase 4 (spec §8.6): block unsupported destination domains before the
+        // burn — only Arbitrum Sepolia is a supported CCTP exit on testnet.
+        if destination_domain != ARBITRUM_SEPOLIA_DOMAIN {
+            panic_err(&env, Error::UnsupportedDomain);
         }
         // P1.7 destination bindings: each function arg must equal the value bound
         // into the proof, so a relayer cannot mutate the outbound burn terms.
