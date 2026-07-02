@@ -22,6 +22,26 @@ export function useSyncWallets() {
   })
 }
 
+export type NoteRow = {
+  commitment: string
+  asset_id: string
+  amount_usdc_7dp: string
+  status: string
+  created_at: string
+}
+export function useMyNotes(enabled: boolean) {
+  return useQuery({
+    queryKey: ["my-notes"],
+    queryFn: () => api.get<{ notes: NoteRow[] }>("/v1/me/notes"),
+    enabled,
+    refetchInterval: 5000,
+  })
+}
+// Sum of active note values, in USDC (7dp -> USDC).
+export function balanceUsdc(notes?: NoteRow[]): number {
+  return (notes ?? []).filter((n) => n.status === "active").reduce((a, n) => a + Number(n.amount_usdc_7dp) / 1e7, 0)
+}
+
 export type ActivityRow = {
   event_type: string
   entity_type: string | null

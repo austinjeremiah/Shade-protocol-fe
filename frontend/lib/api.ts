@@ -14,7 +14,10 @@ async function req<T>(
   path: string,
   opts: { method?: string; body?: unknown; idempotencyKey?: string; auth?: boolean } = {},
 ): Promise<T> {
-  const headers: Record<string, string> = { "content-type": "application/json" }
+  const headers: Record<string, string> = {}
+  // Only set JSON content-type when there's actually a body — Fastify rejects an
+  // empty body when content-type is application/json (bodyless POSTs like /v1/notes/coin).
+  if (opts.body !== undefined) headers["content-type"] = "application/json"
   if (opts.auth !== false) {
     const token = await getAccessToken()
     if (token) headers["authorization"] = `Bearer ${token}`

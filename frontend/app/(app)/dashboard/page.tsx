@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePrivy } from "@privy-io/react-auth"
-import { useMe, useSyncWallets, useContracts, useActivity } from "@/lib/hooks"
+import { useMe, useSyncWallets, useContracts, useActivity, useMyNotes, balanceUsdc } from "@/lib/hooks"
 import { useNoteVaults, isDepositReady } from "@/lib/vault-hooks"
 import { walletsFromPrivyUser } from "@/lib/privy-wallets"
 import { VaultSetup } from "@/components/vault-setup"
+import { TxLink } from "@/components/tx-link"
 import { Copy, ExternalLink, ShieldCheck, ShieldAlert } from "lucide-react"
 
 export default function DashboardPage() {
@@ -13,6 +14,8 @@ export default function DashboardPage() {
   const me = useMe(authenticated)
   const contracts = useContracts()
   const activity = useActivity(authenticated)
+  const notes = useMyNotes(authenticated)
+  const balance = balanceUsdc(notes.data?.notes)
   const sync = useSyncWallets()
   const synced = useRef(false)
   const vaults = useNoteVaults(authenticated)
@@ -37,7 +40,7 @@ export default function DashboardPage() {
       <div>
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Private balance</p>
         <h1 className="mt-2 font-sans text-6xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>
-          0.00 <span className="text-2xl text-muted-foreground">USDC</span>
+          {balance.toFixed(2)} <span className="text-2xl text-muted-foreground">USDC</span>
         </h1>
         <p className="mt-2 font-mono text-xs text-muted-foreground">shielded on Stellar · hidden from public chain</p>
       </div>
@@ -100,7 +103,10 @@ export default function DashboardPage() {
           {(activity.data?.activity ?? []).slice(0, 8).map((a, i) => (
             <div key={i} className="flex items-center justify-between gap-4 border-b border-border/40 py-1.5 font-mono text-xs">
               <span className="text-foreground/80">{a.event_type}</span>
-              <span className="text-muted-foreground">{new Date(a.created_at).toLocaleTimeString()}</span>
+              <div className="flex items-center gap-4">
+                {a.tx_hash && <TxLink hash={a.tx_hash} chain={a.tx_hash.startsWith("0x") ? "arb" : "stellar"} />}
+                <span className="text-muted-foreground">{new Date(a.created_at).toLocaleTimeString()}</span>
+              </div>
             </div>
           ))}
         </div>
