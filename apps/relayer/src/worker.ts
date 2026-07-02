@@ -20,6 +20,7 @@ export const RELAYER_JOB_TYPES = [
   "WITHDRAW_PUBLIC_SUBMIT",  // submit a withdraw proof on the pool
   "WITHDRAW_CCTP_BURN",      // submit a withdraw_cctp proof (proof-bound outbound burn)
   "RFQ_SETTLE_SUBMIT",       // submit an rfq_settle proof (admin/relayer-submitted)
+  "RFQ_ATOMIC_SWAP_SUBMIT",  // submit an atomic USDC->XLM rfq_settle_atomic_swap
   "CCTP_OUTBOUND_ATTESTATION", // poll Circle for the Stellar->Arbitrum burn attestation
   "CCTP_OUTBOUND_MINT",      // complete the Arbitrum mint (MessageTransmitter.receiveMessage)
   "MPC_SETTLE_SUBMIT"        // submit committee-signed MPC match batch to the pool
@@ -150,6 +151,25 @@ export async function processRelayerJob(queue: JobQueue, job: ServiceJob): Promi
     const r = sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "rfq_settle", rpcUrl: RPC, passphrase: PASS, retries: 3,
       args: ["--to_solver", String(p.toSolver), "--proof_bytes", String(p.proofHex), "--pub_signals_bytes", String(p.publicHex),
         "--quote_hash", String(p.quoteHash), "--intent_hash", String(p.intentHash), "--fill_receipt_hash", String(p.fillReceiptHash),
+        "--solver_pubkey", String(p.solverPubkey), "--solver_sig", String(p.solverSig)] });
+    return { txHash: r.txHash };
+  }
+
+  if (job.job_type === "RFQ_ATOMIC_SWAP_SUBMIT") {
+    // Atomic USDC->XLM RFQ: user note spent, XLM delivered, solver credited, all
+    // or nothing. Solver-signed swap terms + proof-bound quote; the relayer
+    // cannot mutate any term (a mutated arg breaks the solver signature on-chain).
+    await queue.setStatus(job.job_id, "submitting", "pool.rfq_settle_atomic_swap");
+    const r = sorobanInvoke({ contractId: pool, secret: relayerSecret, method: "rfq_settle_atomic_swap", rpcUrl: RPC, passphrase: PASS, retries: 3,
+      args: [
+        "--user_xlm_recipient", String(p.userXlmRecipient),
+        "--solver_usdc_recipient", String(p.solverUsdcRecipient),
+        "--proof_bytes", String(p.proofHex), "--pub_signals_bytes", String(p.publicHex),
+        "--quote_hash", String(p.quoteHash), "--intent_hash", String(p.intentHash),
+        "--fill_receipt_hash", String(p.fillReceiptHash),
+        "--output_asset_id", String(p.outputAssetId),
+        "--quoted_output", String(p.quotedOutput), "--min_output", String(p.minOutput),
+        "--price_scaled", String(p.priceScaled),
         "--solver_pubkey", String(p.solverPubkey), "--solver_sig", String(p.solverSig)] });
     return { txHash: r.txHash };
   }

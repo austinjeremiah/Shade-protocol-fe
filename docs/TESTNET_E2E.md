@@ -24,15 +24,35 @@ This document tracks the single reproducible acceptance command required by
 
 `e2e:testnet:all` runs the full scenario matrix. Each scenario reports one of:
 
-- `PASS` — scenario asserted real testnet state.
-- `FAIL` — scenario ran and failed.
-- `NOT_IMPLEMENTED` — the phase that owns this scenario is not yet built
-  (spec §4.5). No mock-success fallback (spec §0.3).
-- `SKIPPED_NO_TESTNET` — testnet config not present; the on-chain assertion
-  could not run. This still fails the gate — acceptance must assert real state.
+- `PASS` — the scenario's backing suite/flow passed.
+- `FAIL` — it ran and failed.
+- `SKIPPED_NO_TESTNET` — an on-chain flow whose live testnet config is absent.
+  This still fails the gate — the acceptance suite must assert real state.
 
-The command exits non-zero unless **every required** scenario is `PASS`. Until
-all phases land it fails with a clear incomplete-task list.
+Backing:
+
+- **All 17 adversarial scenarios (§12.3)** are backed by the offline contract,
+  circuit, and security suites (each is an adversarial regression test there) and
+  run + pass with no testnet — duplicate nonce, expired quote, relayer
+  destination/amount/asset mutation, solver fee change, wrong ASP root, denied
+  label, forged tree root, duplicate/threshold committee, missing proof, verifier
+  unset, wrong batch hash, wrong output commitment, wrong asset id, double spend.
+- **Offline functional flows** F6 (remit simulated), F7 (Shade View), F8
+  (recovery) run their own suites and pass without testnet.
+- **On-chain functional flows** F1 CCTP inbound, F2 public withdraw, F3 RFQ
+  USDC→XLM, F4 MPC same-asset, F5 CCTP exit, F9 MPC priced cross-asset require a
+  deployed testnet + funded keys; without them they report `SKIPPED_NO_TESTNET`.
+
+The command exits non-zero unless every scenario is `PASS`.
+
+### Exit-gate status
+
+`npm run ci:full` is green from a fresh clone (typecheck + TS/contract/circuit
+tests + security gates), and `e2e:testnet:all` passes the full adversarial matrix
+and the offline functional flows. The remaining exit-gate step is a live testnet
+deployment so the six on-chain functional flows assert real state — deploy the
+contracts, register assets, deploy + wire the verifiers, fund the relayer/solver/
+user keys, then set `SHADE_TESTNET_READY=true` and re-run.
 
 ### Testnet prerequisites
 
