@@ -1,12 +1,13 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
+import { useRef, useEffect } from "react"
+import { motion, useScroll, useTransform } from "framer-motion"
+import { useRouter } from "next/navigation"
+import { usePrivy } from "@privy-io/react-auth"
 import { SentientSphere } from "./sentient-sphere"
 
 export function Hero() {
   const containerRef = useRef<HTMLElement>(null)
-  const [isFlipped, setIsFlipped] = useState(false)
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end start"],
@@ -15,25 +16,23 @@ export function Hero() {
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8])
 
+  const router = useRouter()
+  const { ready, authenticated, login } = usePrivy()
+
+  // Once logged in, drop straight into the app.
+  useEffect(() => {
+    if (ready && authenticated) router.push("/dashboard")
+  }, [ready, authenticated, router])
+
+  const onConnect = () => {
+    if (authenticated) router.push("/dashboard")
+    else login()
+  }
+
   return (
     <section ref={containerRef} className="relative h-screen w-full overflow-hidden">
-      {/* Split background — animates on hover */}
-      <div className="absolute inset-0 flex">
-        <motion.div
-          className="h-full"
-          initial={{ width: "50%" }}
-          style={{ background: "#F5F2EC" }}
-          animate={{ width: isFlipped ? "0%" : "50%" }}
-          transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
-        />
-        <motion.div
-          className="h-full"
-          initial={{ width: "50%" }}
-          style={{ background: "#050505", borderLeft: "1px solid rgba(237,234,227,0.18)" }}
-          animate={{ width: isFlipped ? "100%" : "50%" }}
-          transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
-        />
-      </div>
+      {/* Full black background */}
+      <div className="absolute inset-0" style={{ background: "#050505" }} />
 
       {/* 3D Sphere */}
       <div className="absolute inset-0">
@@ -53,9 +52,7 @@ export function Hero() {
               <motion.span
                 key={i}
                 className="font-sans text-5xl md:text-7xl lg:text-8xl font-light tracking-tight leading-[0.85]"
-                style={{ WebkitTextStroke: "1px currentColor", paintOrder: "stroke fill" }}
-                animate={{ color: isFlipped ? "#EDEAE3" : "#1A1820" }}
-                transition={{ duration: 0.6, ease: [0.76, 0, 0.24, 1] }}
+                style={{ WebkitTextStroke: "1px currentColor", paintOrder: "stroke fill", color: "#EDEAE3" }}
               >
                 {letter}
               </motion.span>
@@ -72,14 +69,14 @@ export function Hero() {
         >
           <motion.button
             data-cursor-hover
-            onHoverStart={() => setIsFlipped(true)}
-            onHoverEnd={() => setIsFlipped(false)}
+            onClick={onConnect}
+            disabled={!ready}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="relative px-8 py-4 rounded-full font-mono text-sm tracking-widest uppercase text-white backdrop-blur-md transition-colors duration-500"
+            className="relative px-8 py-4 rounded-full font-mono text-sm tracking-widest uppercase text-white backdrop-blur-md transition-colors duration-500 disabled:opacity-50"
             style={{ background: "rgba(10,10,12,0.55)", border: "1px solid rgba(237,234,227,0.25)" }}
           >
-            Connect
+            {authenticated ? "Enter" : "Connect"}
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#2563eb] rounded-full animate-pulse" />
           </motion.button>
         </motion.div>
@@ -108,13 +105,12 @@ export function Hero() {
         className="absolute z-20"
         style={{ bottom: "12%", left: "3.5%" }}
       >
-        <motion.p
+        <p
           className="font-sans text-base md:text-lg leading-relaxed max-w-[320px]"
-          animate={{ color: isFlipped ? "rgba(237,234,227,0.55)" : "#4A4454" }}
-          transition={{ duration: 0.6 }}
+          style={{ color: "rgba(237,234,227,0.55)" }}
         >
           Move USDC privately across chains.<br />Shield it, settle with proof.
-        </motion.p>
+        </p>
       </motion.div>
 
       {/* Right top text */}

@@ -43,3 +43,7 @@ scratchpad/
 .scratch/
 docs/test-report.generated.md
 docs/reports/
+
+.next/
+.env.local
+node_modules/
