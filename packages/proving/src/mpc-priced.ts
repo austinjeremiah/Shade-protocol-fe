@@ -121,7 +121,16 @@ export function buildMpcPricedWitness(p: PricedParams): { witnessJson: Record<st
   return { witnessJson };
 }
 
-export type PricedProof = { proofHex?: string; publicHex?: string; locallyVerified: boolean; witnessJson: Record<string, unknown> };
+export type PricedProof = {
+  proofHex?: string; publicHex?: string; locallyVerified: boolean; witnessJson: Record<string, unknown>;
+  // Public signals (decimal) for on-chain binding: [0..3] are the outputs.
+  nullifierHashAHex?: string; nullifierHashBHex?: string;
+  outputCommitmentAHex?: string; outputCommitmentBHex?: string;
+};
+
+function hexOut(decimal: string): string {
+  return "0x" + BigInt(decimal).toString(16).padStart(64, "0");
+}
 
 // Full proof (wtns + groth16 prove + verify). Returns witnessJson too so callers
 // can build adversarial variants that must FAIL wtns calculation.
@@ -137,7 +146,15 @@ export function buildMpcPricedProof(p: PricedParams): PricedProof {
   snarkjs(["wtns", "calculate", resolve(dir, "build/main_js/main.wasm"), inputPath, wtns]);
   snarkjs(["groth16", "prove", resolve(dir, "output/main_final.zkey"), wtns, proofJson, publicJson]);
   const verify = snarkjs(["groth16", "verify", resolve(dir, "output/main_verification_key.json"), publicJson, proofJson]);
-  return { locallyVerified: /OK!/.test(verify), witnessJson };
+  const pub = JSON.parse(readFileSync(publicJson, "utf8")) as string[];
+  const c2s = process.env.CIRCOM2SOROBAN_BIN ?? resolve(SHADE_ROOT, "tools/circom2soroban/target/release/circom2soroban");
+  const proofHex = execFileSync(c2s, ["proof", proofJson], { encoding: "utf8" }).trim();
+  const publicHex = execFileSync(c2s, ["public", publicJson], { encoding: "utf8" }).trim();
+  return {
+    locallyVerified: /OK!/.test(verify), witnessJson, proofHex, publicHex,
+    nullifierHashAHex: hexOut(pub[0]), nullifierHashBHex: hexOut(pub[1]),
+    outputCommitmentAHex: hexOut(pub[2]), outputCommitmentBHex: hexOut(pub[3])
+  };
 }
 
 // Run ONLY witness calculation for a (possibly tampered) witness — used by
