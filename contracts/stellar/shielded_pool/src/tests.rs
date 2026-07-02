@@ -267,6 +267,206 @@ fn withdraw_unknown_asset_rejected() {
     assert!(result.is_err(), "withdraw for an unregistered asset must fail closed");
 }
 
+// ---- Phase 3 atomic USDC->XLM RFQ swap (spec §7) ----
+
+struct SwapHarness {
+    env: Env,
+    pool: ShieldedPoolClient<'static>,
+    user: Address,
+    solver_usdc_to: Address,
+    usdc: soroban_sdk::token::TokenClient<'static>,
+    xlm: soroban_sdk::token::TokenClient<'static>,
+    usdc_asset: [u8; 32],
+    xlm_asset: [u8; 32],
+    solver_sk: SigningKey,
+    solver_pk: BytesN<32>,
+}
+
+fn setup_swap() -> SwapHarness {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let verifier = env.register(MockVerifierAccept, ());
+    let nullreg = env.register(MockNullifierRegistry, ());
+    let pool_id = env.register(
+        ShieldedPool,
+        (admin.clone(), Address::generate(&env), verifier, nullreg, 12u32, 1u32, 27u32),
+    );
+    let pool = ShieldedPoolClient::new(&env, &pool_id);
+
+    // Two assets: USDC (input) and XLM (output), both funded into the pool.
+    let usdc_sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let xlm_sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let usdc_asset = [0x01u8; 32];
+    let xlm_asset = [0x02u8; 32];
+    pool.register_asset(&BytesN::from_array(&env, &usdc_asset), &usdc_sac.address());
+    pool.register_asset(&BytesN::from_array(&env, &xlm_asset), &xlm_sac.address());
+    soroban_sdk::token::StellarAssetClient::new(&env, &usdc_sac.address()).mint(&pool_id, &10_000_000i128);
+    soroban_sdk::token::StellarAssetClient::new(&env, &xlm_sac.address()).mint(&pool_id, &50_000_000i128);
+
+    // Authorized solver.
+    let solver_sk = keypair(9);
+    let solver_pk = pk_bytes(&env, &solver_sk);
+    pool.set_authorized_solver(&solver_pk, &true);
+
+    SwapHarness {
+        user: Address::generate(&env),
+        solver_usdc_to: Address::generate(&env),
+        usdc: soroban_sdk::token::TokenClient::new(&env, &usdc_sac.address()),
+        xlm: soroban_sdk::token::TokenClient::new(&env, &xlm_sac.address()),
+        usdc_asset, xlm_asset, solver_sk, solver_pk, pool, env,
+    }
+}
+
+/// Withdraw-circuit public signals for an atomic RFQ swap (op = RFQ_ATOMIC_SWAP,
+/// input asset = USDC, quote/intent/fill bound).
+fn swap_signals(env: &Env, withdrawn: u128, usdc_asset: [u8; 32], quote_h: &[u8; 32], intent_h: &[u8; 32], fill_h: &[u8; 32]) -> Bytes {
+    let words: [[u8; 32]; 18] = [
+        [1u8; 32],               // [0] nullifierHash
+        enc_u128(5),             // [1] operationType = RFQ_ATOMIC_SWAP
+        enc_u128(withdrawn),     // [2] withdrawnValue (solver credit base)
+        [0u8; 32],               // [3] recipientHash (unused by swap; bound via solver sig)
+        [0u8; 32],               // [4] relayerFee
+        enc_u128(999_999),       // [5] deadlineLedger
+        [0u8; 32],               // [6] stateRoot (empty, known)
+        [0u8; 32],               // [7] associationRoot (default 0)
+        enc_u128(1),             // [8] poolId
+        enc_u128(27),            // [9] chainId
+        hash_field(quote_h),     // [10] quoteHash (field)
+        hash_field(intent_h),    // [11] intentHash
+        hash_field(fill_h),      // [12] fillReceiptHash
+        [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 32], // [13-16] cctp dest fields
+        usdc_asset,              // [17] assetId (input = USDC)
+    ];
+    build_signals(env, &words)
+}
+
+/// Compute the solver swap_hash exactly as the contract does and sign it.
+fn sign_swap(env: &Env, sk: &SigningKey, quote_h: &[u8; 32], out_asset: &[u8; 32], quoted: i128, min: i128, price: i128, user: &Address) -> BytesN<64> {
+    let recip = recip_hash(env, user);
+    let mut terms = Bytes::new(env);
+    terms.extend_from_array(quote_h);
+    terms.extend_from_array(out_asset);
+    terms.extend_from_array(&quoted.to_be_bytes());
+    terms.extend_from_array(&min.to_be_bytes());
+    terms.extend_from_array(&price.to_be_bytes());
+    terms.extend_from_array(&recip);
+    let swap_hash: [u8; 32] = env.crypto().sha256(&terms).to_array();
+    let sig = sk.sign(&swap_hash);
+    BytesN::from_array(env, &sig.to_bytes())
+}
+
+const PRICE_SCALE_TEST: i128 = 1_000_000_000;
+
+#[test]
+fn rfq_atomic_swap_delivers_xlm_and_credits_solver() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    let (quoted, min, price) = (2_000_000i128, 1_900_000i128, 500_000_000i128); // 4M * 0.5 = 2M
+    let sig = sign_swap(env, &h.solver_sk, &quote_h, &h.xlm_asset, quoted, min, price, &h.user);
+
+    h.pool.rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.xlm_asset), &quoted, &min, &price, &h.solver_pk, &sig,
+    );
+
+    assert_eq!(h.xlm.balance(&h.user), quoted, "user receives XLM >= min_output");
+    assert_eq!(h.usdc.balance(&h.solver_usdc_to), 4_000_000, "solver credited USDC");
+    assert_eq!(h.pool.note_supply(&BytesN::from_array(env, &h.usdc_asset)), -4_000_000, "USDC note left the shielded set");
+}
+
+#[test]
+fn rfq_atomic_swap_rejects_relayer_amount_mutation() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // Solver signs quoted=2_000_000; relayer submits a LARGER quoted output (3M).
+    let sig = sign_swap(env, &h.solver_sk, &quote_h, &h.xlm_asset, 2_000_000, 1_900_000, 500_000_000, &h.user);
+    let result = h.pool.try_rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.xlm_asset), &3_000_000i128, &1_900_000i128, &500_000_000i128, &h.solver_pk, &sig,
+    );
+    assert!(result.is_err(), "a relayer-inflated output amount must break the solver signature");
+}
+
+#[test]
+fn rfq_atomic_swap_rejects_under_delivery() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // quoted < min -> UnderDelivered.
+    let sig = sign_swap(env, &h.solver_sk, &quote_h, &h.xlm_asset, 1_000_000, 2_000_000, 500_000_000, &h.user);
+    let result = h.pool.try_rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.xlm_asset), &1_000_000i128, &2_000_000i128, &500_000_000i128, &h.solver_pk, &sig,
+    );
+    assert!(result.is_err(), "quoted output below min_output must be rejected");
+}
+
+#[test]
+fn rfq_atomic_swap_rejects_same_asset() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // output asset == input (USDC) -> SameAssetSwap.
+    let sig = sign_swap(env, &h.solver_sk, &quote_h, &h.usdc_asset, 2_000_000, 1_900_000, 500_000_000, &h.user);
+    let result = h.pool.try_rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.usdc_asset), &2_000_000i128, &1_900_000i128, &500_000_000i128, &h.solver_pk, &sig,
+    );
+    assert!(result.is_err(), "an output asset equal to the input asset must be rejected");
+}
+
+#[test]
+fn rfq_atomic_swap_rejects_wrong_price() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    // priceScaled=500M with input 4M implies quoted=2M; the solver signs a quoted
+    // of 2.5M (>= min) that does NOT satisfy the fixed-point rule -> WrongPrice.
+    let (quoted, min, price) = (2_500_000i128, 1_900_000i128, PRICE_SCALE_TEST / 2);
+    let sig = sign_swap(env, &h.solver_sk, &quote_h, &h.xlm_asset, quoted, min, price, &h.user);
+    let result = h.pool.try_rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.xlm_asset), &quoted, &min, &price, &h.solver_pk, &sig,
+    );
+    assert!(result.is_err(), "quoted output not matching floor(input*price/SCALE) must be rejected");
+}
+
+#[test]
+fn rfq_atomic_swap_rejects_unauthorized_solver() {
+    let h = setup_swap();
+    let env = &h.env;
+    let (quote_h, intent_h, fill_h) = ([0x10u8; 32], [0x11u8; 32], [0x12u8; 32]);
+    let signals = swap_signals(env, 4_000_000, h.usdc_asset, &quote_h, &intent_h, &fill_h);
+    let proof = Bytes::from_array(env, &[0u8; 8]);
+    let rogue = keypair(77);
+    let rogue_pk = pk_bytes(env, &rogue);
+    let sig = sign_swap(env, &rogue, &quote_h, &h.xlm_asset, 2_000_000, 1_900_000, 500_000_000, &h.user);
+    let result = h.pool.try_rfq_settle_atomic_swap(
+        &h.user, &h.solver_usdc_to, &proof, &signals,
+        &BytesN::from_array(env, &quote_h), &BytesN::from_array(env, &intent_h), &BytesN::from_array(env, &fill_h),
+        &BytesN::from_array(env, &h.xlm_asset), &2_000_000i128, &1_900_000i128, &500_000_000i128, &rogue_pk, &sig,
+    );
+    assert!(result.is_err(), "a quote signed by an unauthorized solver must be rejected");
+}
+
 // ---- Phase 2 asset registry (spec §6.5/§6.8) ----
 
 #[test]

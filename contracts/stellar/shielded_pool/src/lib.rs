@@ -31,6 +31,8 @@ const OP_WITHDRAW_PUBLIC: i128 = 1;
 const OP_WITHDRAW_CCTP: i128 = 2;
 const OP_RFQ_SETTLEMENT: i128 = 3;
 const OP_DEPOSIT_NOTE_MINT: i128 = 4; // P1.8 deposit circuit op type
+const OP_RFQ_ATOMIC_SWAP: i128 = 5;   // Phase 3: atomic USDC->XLM RFQ settlement
+const PRICE_SCALE: i128 = 1_000_000_000; // Phase 3 (spec §7.6): fixed-point price scale
 const STELLAR_CCTP_DOMAIN: i128 = 27; // C6: inbound deposits must target the Stellar CCTP domain
 
 // Off-chain-root design: the authorized registrar (admin/relayer) maintains the
@@ -91,6 +93,9 @@ pub enum Error {
     MpcDuplicateSigner = 28,// Phase 8: the same committee pubkey appears more than once in signer_pubkeys
     UnknownAsset = 29,      // Phase 2: asset_id is not registered (never defaults to USDC)
     AssetAlreadyRegistered = 30, // Phase 2: asset_id already mapped to a token
+    SameAssetSwap = 31,     // Phase 3: RFQ swap input asset == output asset
+    UnderDelivered = 32,    // Phase 3: quoted output < min output
+    WrongPrice = 33,        // Phase 3: quoted output != floor(input * priceScaled / PRICE_SCALE)
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -740,6 +745,145 @@ impl ShieldedPool {
             (symbol_short!("rfq"), quote_hash),
             (to_solver, nullifier_hash, credit),
         );
+    }
+
+    /// Phase 3 (spec §7): ATOMIC USDC->XLM RFQ settlement. In ONE transaction:
+    ///   1. verify the solver signed the exact swap terms (accepted quote +
+    ///      output asset/amount/min/recipient) — the relayer cannot mutate any;
+    ///   2. verify the user's note-ownership proof (reuses the withdraw circuit,
+    ///      operationType = RFQ_ATOMIC_SWAP) and bind quote/intent/fill;
+    ///   3. spend the user's USDC nullifier once;
+    ///   4. deliver `quoted_output` of the OUTPUT asset (XLM) to the user from pool
+    ///      reserves (>= `min_output`);
+    ///   5. credit the solver `withdrawnValue - relayerFee` in the INPUT asset (USDC).
+    ///
+    /// All-or-nothing: any failure (insufficient XLM reserves, unregistered asset,
+    /// bad proof) reverts the whole tx, so the nullifier is never spent without the
+    /// user receiving XLM (spec §7.3).
+    pub fn rfq_settle_atomic_swap(
+        env: Env,
+        user_xlm_recipient: Address,
+        solver_usdc_recipient: Address,
+        proof_bytes: Bytes,
+        pub_signals_bytes: Bytes,
+        quote_hash: BytesN<32>,
+        intent_hash: BytesN<32>,
+        fill_receipt_hash: BytesN<32>,
+        output_asset_id: BytesN<32>,
+        quoted_output: i128,
+        min_output: i128,
+        price_scaled: i128,
+        solver_pubkey: BytesN<32>,
+        solver_sig: BytesN<64>,
+    ) {
+        Self::require_not_paused(&env);
+
+        // Solver must be in the authorized-solver registry.
+        if !env.storage().persistent().get(&DataKey::Solver(solver_pubkey.clone())).unwrap_or(false) {
+            panic_err(&env, Error::UnauthorizedSolver);
+        }
+        // Output amounts sane and quote satisfied (spec §7.6: actual >= min).
+        if quoted_output <= 0 || min_output <= 0 || quoted_output < min_output || price_scaled <= 0 {
+            panic_err(&env, Error::UnderDelivered);
+        }
+
+        // Bind the solver to the EXACT swap terms: accepted quote hash + output
+        // asset + quoted/min output + price + recipient. Any relayer mutation of
+        // these breaks the signature (spec §7.7/§7.8).
+        let recipient_h = Self::recipient_hash(&env, &user_xlm_recipient);
+        let mut terms = Bytes::new(&env);
+        terms.extend_from_array(&quote_hash.to_array());
+        terms.extend_from_array(&output_asset_id.to_array());
+        terms.extend_from_array(&quoted_output.to_be_bytes());
+        terms.extend_from_array(&min_output.to_be_bytes());
+        terms.extend_from_array(&price_scaled.to_be_bytes());
+        terms.extend_from_array(&recipient_h.to_array());
+        let swap_hash: [u8; 32] = env.crypto().sha256(&terms).to_array();
+        env.crypto().ed25519_verify(&solver_pubkey, &Bytes::from_array(&env, &swap_hash), &solver_sig);
+
+        // Parse + validate the user's note proof.
+        let signals = parse_public_signals(&env, &pub_signals_bytes);
+        let op_type: i128 = fr32_to_i128(&signals.get(1).unwrap());
+        let nullifier_hash: BytesN<32> = signals.get(0).unwrap();
+        let withdrawn_value: i128 = fr32_to_i128(&signals.get(2).unwrap());
+        let relayer_fee: i128 = fr32_to_i128(&signals.get(4).unwrap());
+        let deadline_ledger: i128 = fr32_to_i128(&signals.get(5).unwrap());
+        let state_root: BytesN<32> = signals.get(6).unwrap();
+        let input_asset_id: BytesN<32> = signals.get(17).unwrap();
+
+        if op_type != OP_RFQ_ATOMIC_SWAP {
+            panic_err(&env, Error::WrongOperation);
+        }
+        if withdrawn_value <= 0 || relayer_fee < 0 || relayer_fee > withdrawn_value {
+            panic_err(&env, Error::BadAmount);
+        }
+        if (env.ledger().sequence() as i128) > deadline_ledger {
+            panic_err(&env, Error::Expired);
+        }
+        // Fixed-point price rule (spec §7.6): quoted output must equal
+        // floor(inputAmount * priceScaled / PRICE_SCALE). inputAmount is the
+        // proof-bound withdrawnValue (the USDC the solver is credited against).
+        let expected_output = withdrawn_value
+            .checked_mul(price_scaled)
+            .unwrap_or_else(|| panic_err(&env, Error::BadAmount)) / PRICE_SCALE;
+        if quoted_output != expected_output {
+            panic_err(&env, Error::WrongPrice);
+        }
+        // Cross-asset: the output asset must differ from the note's input asset.
+        if output_asset_id == input_asset_id {
+            panic_err(&env, Error::SameAssetSwap);
+        }
+        // Proof commits to quote/intent/fill so the note is bound to this quote.
+        if Self::hash_to_field(&env, &quote_hash) != signals.get(10).unwrap() {
+            panic_err(&env, Error::WrongQuote);
+        }
+        if Self::hash_to_field(&env, &intent_hash) != signals.get(11).unwrap() {
+            panic_err(&env, Error::WrongIntent);
+        }
+        if Self::hash_to_field(&env, &fill_receipt_hash) != signals.get(12).unwrap() {
+            panic_err(&env, Error::WrongFillReceipt);
+        }
+        Self::check_domain_compliance(&env, &signals);
+        if !env.storage().persistent().get(&DataKey::KnownRoot(state_root.clone())).unwrap_or(false) {
+            panic_err(&env, Error::UnknownRoot);
+        }
+
+        // Verify the note-ownership proof.
+        let verifier: Address = env.storage().instance().get(&VERIFIER).unwrap();
+        let ok: bool = env.invoke_contract(&verifier, &Symbol::new(&env, "verify"),
+            vec![&env, proof_bytes.to_val(), pub_signals_bytes.to_val()]);
+        if !ok { panic_err(&env, Error::ProofInvalid); }
+
+        // Spend the user's USDC nullifier exactly once.
+        let nullreg: Address = env.storage().instance().get(&NULLREG).unwrap();
+        let _: bool = env.invoke_contract(&nullreg, &Symbol::new(&env, "spend"),
+            vec![&env, env.current_contract_address().to_val(), nullifier_hash.clone().to_val()]);
+
+        // Deliver the OUTPUT asset (XLM) to the user from pool reserves. Fails
+        // closed on an unregistered asset or insufficient reserves — reverting the
+        // whole tx (including the nullifier spend).
+        let out_token: Address = Self::get_asset_token(env.clone(), output_asset_id.clone());
+        let out_client = token::TokenClient::new(&env, &out_token);
+        if out_client.balance(&env.current_contract_address()) < quoted_output {
+            panic_err(&env, Error::InsufficientBalance);
+        }
+        out_client.transfer(&env.current_contract_address(), &user_xlm_recipient, &quoted_output);
+
+        // Credit the solver in the INPUT asset (USDC). Solver receives funds only
+        // after the user's XLM has been delivered above.
+        let credit = withdrawn_value - relayer_fee;
+        let in_token: Address = Self::get_asset_token(env.clone(), input_asset_id.clone());
+        let in_client = token::TokenClient::new(&env, &in_token);
+        if in_client.balance(&env.current_contract_address()) < credit {
+            panic_err(&env, Error::InsufficientBalance);
+        }
+        in_client.transfer(&env.current_contract_address(), &solver_usdc_recipient, &credit);
+
+        // The user's input note leaves the shielded set.
+        Self::adjust_note_supply(&env, &input_asset_id, -withdrawn_value);
+
+        env.events().publish((symbol_short!("rfqswap"), quote_hash),
+            (user_xlm_recipient, solver_usdc_recipient, nullifier_hash, quoted_output, credit));
     }
 
     // ---- Phase 8: MPC committee settlement ----

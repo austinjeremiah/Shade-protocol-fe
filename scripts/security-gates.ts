@@ -116,6 +116,12 @@ const gates: Gate[] = [
     // note's assetId signal and debit per-asset supply — never a hardcoded USDC.
     name: "withdraw is asset-bound: reads assetId signal + per-asset supply (Phase 2)",
     cmd: `( grep -q "let asset_id: BytesN<32> = signals.get(17)" contracts/stellar/shielded_pool/src/lib.rs && grep -q "adjust_note_supply(&env, &asset_id, -withdrawn_value)" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo WITHDRAW_NOT_ASSET_BOUND`
+  },
+  {
+    // Phase 3: the atomic swap must deliver the output asset AND bind the solver
+    // to the exact terms (price + amounts + recipient) so the relayer can't mutate.
+    name: "rfq_settle_atomic_swap delivers output + binds solver terms (Phase 3)",
+    cmd: `( grep -q "fn rfq_settle_atomic_swap" contracts/stellar/shielded_pool/src/lib.rs && grep -q "ed25519_verify(&solver_pubkey, &Bytes::from_array(&env, &swap_hash)" contracts/stellar/shielded_pool/src/lib.rs && grep -q "Error::WrongPrice" contracts/stellar/shielded_pool/src/lib.rs ) && echo "" || echo RFQ_ATOMIC_MISSING`
   }
 ];
 
