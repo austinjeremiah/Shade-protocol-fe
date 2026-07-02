@@ -89,6 +89,8 @@ pub enum Error {
     MpcProofInvalid = 26,   // Phase C: mpc_settlement ZK proof failed verification
     MpcSignalMismatch = 27, // Phase C: proof public signal != provided argument
     MpcDuplicateSigner = 28,// Phase 8: the same committee pubkey appears more than once in signer_pubkeys
+    UnknownAsset = 29,      // Phase 2: asset_id is not registered (never defaults to USDC)
+    AssetAlreadyRegistered = 30, // Phase 2: asset_id already mapped to a token
 }
 
 const ADMIN: Symbol = symbol_short!("admin");
@@ -110,6 +112,13 @@ enum DataKey {
     KnownRoot(BytesN<32>),
     Deposit(BytesN<32>),
     Solver(BytesN<32>), // C4: authorized solver ed25519 pubkey -> allowed
+    // Phase 2 asset registry (spec §6.5): asset_id (field-compatible BytesN<32>)
+    // -> Stellar token/SAC contract. Unknown assets are rejected, never defaulted
+    // to USDC.
+    AssetToken(BytesN<32>),
+    // Per-asset shielded note supply (spec §6.6): sum of note values (7dp) minted
+    // for this asset minus those withdrawn. Must never exceed vault_balance.
+    NoteSupply(BytesN<32>),
 }
 
 #[contract]
@@ -439,6 +448,64 @@ impl ShieldedPool {
 
     pub fn get_association_root(env: Env) -> BytesN<32> {
         env.storage().instance().get(&ASSOCROOT).unwrap_or(BytesN::from_array(&env, &[0u8; 32]))
+    }
+
+    // ---- Phase 2 asset registry (spec §6.5) ----
+    //
+    // Every shielded asset maps a field-compatible `asset_id` (BytesN<32>) to its
+    // Stellar token/SAC contract. Settlement paths look up the token by asset_id;
+    // an unregistered asset is rejected (UnknownAsset), never defaulted to USDC.
+
+    /// Admin: register (or re-point) an `asset_id` to its Stellar token contract.
+    /// Registering a fresh asset initializes its note supply to 0.
+    pub fn register_asset(env: Env, asset_id: BytesN<32>, token: Address) {
+        Self::require_admin(&env);
+        let key = DataKey::AssetToken(asset_id.clone());
+        if env.storage().persistent().get::<DataKey, Address>(&key).is_some() {
+            panic_err(&env, Error::AssetAlreadyRegistered);
+        }
+        env.storage().persistent().set(&key, &token);
+        env.storage().persistent().set(&DataKey::NoteSupply(asset_id.clone()), &0i128);
+        env.events().publish((symbol_short!("regasset"), asset_id), token);
+    }
+
+    /// Resolve the token contract for `asset_id`. Panics (UnknownAsset) if the
+    /// asset is not registered — no silent default to USDC (spec §0.2, §6.5).
+    pub fn get_asset_token(env: Env, asset_id: BytesN<32>) -> Address {
+        env.storage().persistent()
+            .get(&DataKey::AssetToken(asset_id))
+            .unwrap_or_else(|| panic_err(&env, Error::UnknownAsset))
+    }
+
+    /// Shielded note supply (7dp) for `asset_id`.
+    pub fn note_supply(env: Env, asset_id: BytesN<32>) -> i128 {
+        env.storage().persistent().get(&DataKey::NoteSupply(asset_id)).unwrap_or(0i128)
+    }
+
+    /// On-chain token balance the pool custodies for `asset_id`'s token.
+    pub fn vault_balance(env: Env, asset_id: BytesN<32>) -> i128 {
+        let token = Self::get_asset_token(env.clone(), asset_id);
+        token::TokenClient::new(&env, &token).balance(&env.current_contract_address())
+    }
+
+    /// Proof of reserves for `asset_id`: (note_supply, vault_balance). A healthy
+    /// pool always has note_supply <= vault_balance.
+    pub fn proof_of_reserves(env: Env, asset_id: BytesN<32>) -> (i128, i128) {
+        let supply = Self::note_supply(env.clone(), asset_id.clone());
+        let bal = Self::vault_balance(env, asset_id);
+        (supply, bal)
+    }
+
+    /// Internal: adjust a registered asset's note supply by `delta` (may be
+    /// negative). Requires the asset to be registered. Wired into the asset-bound
+    /// deposit/withdraw paths in the commitment-binding change.
+    #[allow(dead_code)]
+    fn adjust_note_supply(env: &Env, asset_id: &BytesN<32>, delta: i128) {
+        if env.storage().persistent().get::<DataKey, Address>(&DataKey::AssetToken(asset_id.clone())).is_none() {
+            panic_err(env, Error::UnknownAsset);
+        }
+        let cur: i128 = env.storage().persistent().get(&DataKey::NoteSupply(asset_id.clone())).unwrap_or(0i128);
+        env.storage().persistent().set(&DataKey::NoteSupply(asset_id.clone()), &(cur + delta));
     }
 
     /// Proof-bound CCTP outbound (Stellar -> Arbitrum Sepolia).

@@ -172,6 +172,44 @@ fn mpc_settle_rejects_duplicate_signer_replay() {
     assert!(result.is_err(), "duplicate signer must not satisfy the committee threshold");
 }
 
+// ---- Phase 2 asset registry (spec §6.5/§6.8) ----
+
+#[test]
+fn register_asset_and_lookup_token() {
+    let h = setup();
+    let env = &h.env;
+    let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
+    let token = sac.address();
+    let asset_id = BytesN::from_array(env, &[0x11u8; 32]);
+
+    h.pool.register_asset(&asset_id, &token);
+    assert_eq!(h.pool.get_asset_token(&asset_id), token, "registered asset resolves to its token");
+    assert_eq!(h.pool.note_supply(&asset_id), 0, "fresh asset starts at zero note supply");
+    // proof_of_reserves = (supply, vault balance); both 0 for a fresh SAC.
+    assert_eq!(h.pool.proof_of_reserves(&asset_id), (0, 0));
+}
+
+#[test]
+fn unknown_asset_lookup_rejected() {
+    let h = setup();
+    let env = &h.env;
+    let asset_id = BytesN::from_array(env, &[0x22u8; 32]);
+    // No default to USDC — an unregistered asset must fail closed.
+    assert!(h.pool.try_get_asset_token(&asset_id).is_err(), "unknown asset must not resolve to any token");
+    assert!(h.pool.try_vault_balance(&asset_id).is_err(), "unknown asset has no vault balance");
+}
+
+#[test]
+fn register_asset_twice_rejected() {
+    let h = setup();
+    let env = &h.env;
+    let sac = env.register_stellar_asset_contract_v2(Address::generate(env));
+    let asset_id = BytesN::from_array(env, &[0x33u8; 32]);
+    h.pool.register_asset(&asset_id, &sac.address());
+    let sac2 = env.register_stellar_asset_contract_v2(Address::generate(env));
+    assert!(h.pool.try_register_asset(&asset_id, &sac2.address()).is_err(), "re-registering an asset_id must be rejected");
+}
+
 /// B1 (spec §5.1): once a committee exists, an mpc_verifier is MANDATORY. Valid,
 /// threshold-met committee signatures alone must NOT settle when no verifier is
 /// configured — the previous fail-open path (settle on sigs-only) is forbidden.
