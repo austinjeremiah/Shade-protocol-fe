@@ -41,33 +41,60 @@ function Withdraw() {
   const [zk, setZk] = useState<ZkState>({ circuit: "withdraw_public" })
   const [error, setError] = useState<string | null>(null)
   const [doneTx, setDoneTx] = useState<string | null>(null)
+  const [signStatus, setSignStatus] = useState<string | null>(null)
+  const [fAddr, setFAddr] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
 
   const commitment = selected ?? active[0]?.commitment ?? null
 
+  async function connect() {
+    setConnecting(true); setError(null)
+    try {
+      const { connectFreighter } = await import("@/lib/freighter-withdraw")
+      setFAddr(await connectFreighter())
+    } catch (e) {
+      setError((e as Error).message ?? "failed to connect Freighter")
+    } finally {
+      setConnecting(false)
+    }
+  }
+
   async function run() {
     if (!commitment) return
-    setBusy(true); setError(null); setJobId(undefined); setDoneTx(null)
+    setBusy(true); setError(null); setJobId(undefined); setDoneTx(null); setSignStatus(null)
     setZk({ circuit: "withdraw_public", verifier: contracts.data?.verifierWithdraw, proving: true, publicSignals: [{ label: "note", value: commitment }] })
     try {
-      const res = await api.post<{ job_id: string }>("/v1/withdrawals/assist", { commitment })
+      // 1) backend builds the ZK proof + ASP root (prepare mode — does NOT submit).
+      const res = await api.post<{ job_id: string }>("/v1/withdrawals/assist", { commitment, prepare: true })
       setJobId(res.job_id)
+      let prep: { recipient: string; pool: string; proofHex: string; publicHex: string } | null = null
       for (let i = 0; i < 120; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         const job = await api.get<{ status: string; result: Record<string, unknown> | null; error: string | null }>(`/v1/jobs/${res.job_id}`)
         if (job.status === "ready") {
-          const tx = String(job.result?.txHash ?? "")
-          setDoneTx(tx)
-          setZk((z) => ({ ...z, proving: false, verifiedOnChain: true, txHash: tx, nullifier: commitment,
-            proofHex: job.result?.zkProof ? String(job.result.zkProof) : undefined, publicHex: job.result?.zkPublicSignals ? String(job.result.zkPublicSignals) : undefined }))
-          await qc.invalidateQueries({ queryKey: ["my-notes"] })
-          await qc.invalidateQueries({ queryKey: ["activity"] })
+          prep = { recipient: String(job.result?.recipient), pool: String(job.result?.pool),
+            proofHex: String(job.result?.proofHex ?? job.result?.zkProof), publicHex: String(job.result?.publicHex ?? job.result?.zkPublicSignals) }
+          setZk((z) => ({ ...z, proving: false, proofHex: prep!.proofHex, publicHex: prep!.publicHex }))
           break
         }
-        if (job.status === "failed") throw new Error(job.error ?? "withdraw failed")
+        if (job.status === "failed") throw new Error(job.error ?? "withdraw prepare failed")
       }
+      if (!prep) throw new Error("withdraw prepare timed out")
+
+      // 2) USER signs pool.withdraw's require_auth() in their own Stellar wallet (Freighter).
+      const { freighterWithdraw } = await import("@/lib/freighter-withdraw")
+      const tx = await freighterWithdraw({ ...prep, onStatus: setSignStatus })
+
+      // 3) record the spend (proof already verified on-chain by the tx).
+      setSignStatus("recording")
+      await api.post("/v1/withdrawals/mark-spent", { commitment, tx_hash: tx })
+      setDoneTx(tx); setSignStatus(null)
+      setZk((z) => ({ ...z, proving: false, verifiedOnChain: true, txHash: tx, nullifier: commitment }))
+      await qc.invalidateQueries({ queryKey: ["my-notes"] })
+      await qc.invalidateQueries({ queryKey: ["activity"] })
     } catch (e) {
       setError((e as { error?: string; message?: string }).error ?? (e as Error).message ?? "withdraw failed")
-      setZk((z) => ({ ...z, proving: false }))
+      setZk((z) => ({ ...z, proving: false })); setSignStatus(null)
     } finally {
       setBusy(false)
     }
@@ -98,16 +125,33 @@ function Withdraw() {
 
         <div className="mt-5 flex items-center gap-2 text-muted-foreground">
           <ArrowUpRight className="h-4 w-4 text-[#2563eb]" />
-          <span className="font-mono text-xs">Releases USDC to your Stellar account (backend-assisted signing)</span>
+          <span className="font-mono text-xs">Releases USDC to your Stellar account · you sign <span className="text-foreground/80">pool.withdraw</span> in Freighter</span>
         </div>
 
-        <button
-          onClick={run}
-          disabled={busy || !commitment}
-          className="mt-5 w-full rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-6 py-3 font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-[#2563eb]/20 disabled:opacity-40"
-        >
-          {busy ? "Proving + releasing…" : "Withdraw note"}
-        </button>
+        {fAddr ? (
+          <>
+            <div className="mt-4 flex items-center justify-between gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/5 px-4 py-2.5">
+              <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-emerald-400"><Lock className="h-3.5 w-3.5" /> Freighter connected</span>
+              <span className="font-mono text-xs text-foreground/70">{fAddr.slice(0, 6)}…{fAddr.slice(-4)}</span>
+            </div>
+            <button
+              onClick={run}
+              disabled={busy || !commitment}
+              className="mt-4 w-full rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-6 py-3 font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-[#2563eb]/20 disabled:opacity-40"
+            >
+              {busy ? (signStatus ?? "Proving…") : "Withdraw note"}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={connect}
+            disabled={connecting}
+            className="mt-5 w-full rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-6 py-3 font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-[#2563eb]/20 disabled:opacity-40"
+          >
+            {connecting ? "Connecting…" : "Connect Freighter"}
+          </button>
+        )}
+        {signStatus && <p className="mt-2 flex items-center gap-2 font-mono text-[10px] text-[#2563eb]"><Lock className="h-3 w-3" /> {signStatus}</p>}
         {error && <p className="mt-3 font-mono text-xs text-red-400">error: {error}</p>}
         {doneTx && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-400/5 px-4 py-2.5 font-mono text-xs text-emerald-400">
