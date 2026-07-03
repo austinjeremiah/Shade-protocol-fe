@@ -57,7 +57,8 @@ function Withdraw() {
         if (job.status === "ready") {
           const tx = String(job.result?.txHash ?? "")
           setDoneTx(tx)
-          setZk((z) => ({ ...z, proving: false, verifiedOnChain: true, txHash: tx, nullifier: commitment }))
+          setZk((z) => ({ ...z, proving: false, verifiedOnChain: true, txHash: tx, nullifier: commitment,
+            proofHex: job.result?.zkProof ? String(job.result.zkProof) : undefined, publicHex: job.result?.zkPublicSignals ? String(job.result.zkPublicSignals) : undefined }))
           await qc.invalidateQueries({ queryKey: ["my-notes"] })
           await qc.invalidateQueries({ queryKey: ["activity"] })
           break
@@ -180,6 +181,7 @@ function Trade() {
           const specpure = !!job.result?.onChainCommitteeVerify
           setDone({ tx, xlm: String(job.result?.outputXlm ?? outXlm.toFixed(4)), specpure })
           setZk((z) => ({ ...z, circuit: specpure ? "mpc_priced_settlement" : "rfq_atomic_swap", proving: false, verifiedOnChain: true, txHash: tx, nullifier: String(job.result?.nullifierA ?? commitment),
+            proofHex: job.result?.zkProof ? String(job.result.zkProof) : undefined, publicHex: job.result?.zkPublicSignals ? String(job.result.zkPublicSignals) : undefined,
             publicSignals: [{ label: "intent", value: commitment }, { label: "output", value: "XLM" }, { label: "committee", value: specpure ? "3-node · verified on-chain" : "3-node threshold" }] }))
           await qc.invalidateQueries({ queryKey: ["my-notes"] })
           await qc.invalidateQueries({ queryKey: ["activity"] })

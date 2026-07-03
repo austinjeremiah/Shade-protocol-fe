@@ -136,7 +136,8 @@ export default function DepositPage() {
         if (job.status === "ready") {
           const tx = String(job.result?.receiveDepositTxHash ?? "")
           setStep(4, { status: "done", detail: `note active · leaf ${job.result?.leafIndex}` })
-          setZk((z) => ({ ...z, verifiedOnChain: true, txHash: tx }))
+          setZk((z) => ({ ...z, verifiedOnChain: true, txHash: tx,
+            proofHex: job.result?.zkProof ? String(job.result.zkProof) : undefined, publicHex: job.result?.zkPublicSignals ? String(job.result.zkPublicSignals) : undefined }))
           await qc.invalidateQueries({ queryKey: ["my-notes"] })
           await qc.invalidateQueries({ queryKey: ["activity"] })
           break
