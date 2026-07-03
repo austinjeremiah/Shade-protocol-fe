@@ -17,7 +17,7 @@ export default function ActivityPage() {
         <p className="mt-2 font-mono text-xs text-muted-foreground">every shield, trade, and disclosure · on-chain proofs linked</p>
       </div>
 
-      <div className="rounded-xl border border-border bg-black/30 p-6">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         {items.length === 0 ? (
           <p className="font-mono text-xs text-muted-foreground">no activity yet — <a href="/deposit" className="text-[#2563eb] hover:underline">shield some USDC</a> to begin.</p>
         ) : (

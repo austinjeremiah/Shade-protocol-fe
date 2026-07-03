@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { useEffect } from "react"
 import { usePrivy } from "@privy-io/react-auth"
 import { useHealth } from "@/lib/hooks"
+import { GlyphMatrix } from "@/components/ui/glyph-matrix"
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
@@ -29,10 +30,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!authenticated) return <FullScreenNote text="redirecting…" />
 
   return (
-    <div className="min-h-screen" style={{ background: "#050505" }}>
-      <header className="sticky top-0 z-40 border-b border-border bg-black/60 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/dashboard" className="font-sans text-lg font-light tracking-tight" style={{ color: "#EDEAE3" }}>
+    <div className="relative z-0 min-h-screen" style={{ background: "#050505" }}>
+      <GlyphMatrix
+        color="#3b82f6"
+        cellSize={14}
+        mutationRate={0.05}
+        interval={100}
+        fadeBottom={0.4}
+        className="fixed inset-0 z-0 opacity-70"
+      />
+
+      <div className="relative z-10">
+      <header className="sticky top-0 z-40 bg-black/60 backdrop-blur-md">
+        <div className="flex items-center justify-between px-8 py-4">
+          <Link href="/" className="font-sans text-2xl font-light tracking-tight transition-opacity hover:opacity-80" style={{ color: "#EDEAE3" }}>
             SHADE
           </Link>
           <nav className="hidden items-center gap-6 md:flex">
@@ -61,8 +72,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </div>
+        {/* skinny grey glow line, left → right */}
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/25 to-transparent" />
       </header>
       <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+      </div>
     </div>
   )
 }

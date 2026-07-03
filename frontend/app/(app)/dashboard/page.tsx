@@ -52,32 +52,32 @@ export default function DashboardPage() {
   const lastMatchTx = matchEvents.find((a) => a.tx_hash)?.tx_hash ?? null
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <div>
-        <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Private balance</p>
-        <h1 className="mt-2 font-sans text-6xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>
-          {balance.toFixed(2)} <span className="text-2xl text-muted-foreground">USDC</span>
+        <p className="font-mono text-sm uppercase tracking-[0.3em] text-foreground/90">Private balance</p>
+        <h1 className="mt-4 font-sans text-6xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>
+          {balance.toFixed(2)} <span className="text-3xl text-muted-foreground">USDC</span>
         </h1>
-        <p className="mt-2 font-mono text-xs text-muted-foreground">shielded on Stellar · hidden from public chain</p>
+        <p className="mt-4 font-mono text-sm text-foreground/70">shielded on Stellar · hidden from public chain</p>
       </div>
 
       {/* Received (XLM) — the value out of swaps + private matches */}
-      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-400" /> Received · XLM
+            <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-foreground/90">
+              <ArrowDownLeft className="h-4 w-4 text-emerald-400" /> Received · XLM
             </p>
             <p className="mt-2 font-sans text-4xl font-light tracking-tight text-emerald-400">
               {receivedXlm.toFixed(2)} <span className="text-lg text-muted-foreground">XLM</span>
             </p>
           </div>
-          <p className="max-w-[13rem] text-right font-mono text-[10px] leading-relaxed text-muted-foreground">
+          <p className="max-w-[13rem] text-right font-mono text-xs leading-relaxed text-foreground/70">
             cross-asset output from your USDC notes · settled on-chain
           </p>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <ReceivedRow
             icon={<Zap className="h-4 w-4 text-[#2563eb]" />}
             title="Solver swaps"
@@ -96,7 +96,7 @@ export default function DashboardPage() {
           />
         </div>
         {receivedXlm === 0 && (
-          <p className="mt-4 font-mono text-[10px] text-muted-foreground">
+          <p className="mt-4 font-mono text-xs text-foreground/65">
             no swaps or matches yet — <a href="/move" className="text-[#2563eb] hover:underline">convert a note in Move</a>.
           </p>
         )}
@@ -105,18 +105,18 @@ export default function DashboardPage() {
       {/* Vault status / gate */}
       {!vaults.isLoading && (
         readyVault ? (
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-emerald-400/25 bg-emerald-400/5 px-5 py-3">
-            <span className="flex items-center gap-2 font-mono text-xs text-emerald-400">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-black/30 px-6 py-4 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-emerald-400/40 hover:shadow-[0_10px_30px_-12px_rgba(52,211,153,0.35)]">
+            <span className="flex items-center gap-2 font-mono text-sm text-emerald-400">
               <ShieldCheck className="h-4 w-4" /> Vault ready · backup verified · you can deposit
             </span>
             <a href="/deposit" className="font-mono text-xs uppercase tracking-wider text-foreground hover:underline">Deposit →</a>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2563eb]/30 bg-[#2563eb]/5 px-5 py-3">
-            <span className="flex items-center gap-2 font-mono text-xs text-[#2563eb]">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-[#2563eb]/30 bg-[#2563eb]/5 px-6 py-4 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/50 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.4)]">
+            <span className="flex items-center gap-2 font-mono text-sm text-[#2563eb]">
               <ShieldAlert className="h-4 w-4" /> {hasVault ? "Finish vault backup to deposit" : "Set up your private vault before depositing"}
             </span>
-            <button onClick={() => setShowSetup(true)} className="rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-4 py-1.5 font-mono text-[10px] uppercase tracking-wider text-foreground hover:bg-[#2563eb]/20">
+            <button onClick={() => setShowSetup(true)} className="rounded-full border border-[#2563eb]/40 bg-[#2563eb]/10 px-4 py-1.5 font-mono text-xs uppercase tracking-wider text-foreground hover:bg-[#2563eb]/20">
               Set up vault
             </button>
           </div>
@@ -128,12 +128,12 @@ export default function DashboardPage() {
         <Card title="Account">
           <Field label="Identity (Privy DID)" value={me.data?.privy_user_id ?? user?.id ?? "—"} mono />
           {me.data?.email && <Field label="Email" value={me.data.email} />}
-          <div className="mt-3">
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Linked wallets</p>
-            {wallets.length === 0 && <p className="font-mono text-xs text-muted-foreground">syncing…</p>}
+          <div className="mt-4">
+            <p className="mb-2 font-mono text-xs uppercase tracking-wider text-foreground/75">Linked wallets</p>
+            {wallets.length === 0 && <p className="font-mono text-xs text-foreground/65">syncing…</p>}
             {wallets.map((w) => (
-              <div key={w.id} className="flex items-center justify-between gap-3 py-1">
-                <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">
+              <div key={w.id} className="flex items-center justify-between gap-3 py-1.5">
+                <span className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-xs uppercase text-foreground/70">
                   {w.wallet_type}
                 </span>
                 <Mono value={w.address} />
@@ -155,7 +155,7 @@ export default function DashboardPage() {
       <Card title="Recent activity">
         {(() => {
           const items = (activity.data?.activity ?? []).filter((a) => !ACTIVITY_HIDE.test(a.event_type)).slice(0, 8)
-          if (items.length === 0) return <p className="font-mono text-xs text-muted-foreground">no activity yet — shield some USDC to begin.</p>
+          if (items.length === 0) return <p className="font-mono text-xs text-foreground/65">no activity yet — shield some USDC to begin.</p>
           return (
             <div className="space-y-0.5">
               {items.map((a, i) => <ActivityItem key={i} event={a.event_type} tx={a.tx_hash} at={a.created_at} />)}
@@ -186,12 +186,12 @@ export default function DashboardPage() {
 
 function ReceivedRow({ icon, title, count, xlm, note, tx }: { icon: React.ReactNode; title: string; count: number; xlm: number; note: string; tx: string | null }) {
   return (
-    <div className="rounded-lg border border-border bg-black/40 p-4">
+    <div className="rounded-lg border border-border bg-black/40 p-4 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_8px_24px_-10px_rgba(37,99,235,0.35)]">
       <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 font-mono text-xs text-foreground/80">{icon}{title}</span>
-        <span className="font-sans text-lg font-light text-emerald-400">+{xlm.toFixed(2)} <span className="text-xs text-muted-foreground">XLM</span></span>
+        <span className="flex items-center gap-2 font-mono text-sm text-foreground">{icon}{title}</span>
+        <span className="font-sans text-xl font-light text-emerald-300">+{xlm.toFixed(2)} <span className="text-sm text-muted-foreground">XLM</span></span>
       </div>
-      <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[10px] text-muted-foreground">
+      <div className="mt-2 flex items-center justify-between gap-3 font-mono text-xs text-foreground/65">
         <span>{count} {count === 1 ? "conversion" : "conversions"} · {note}</span>
         {tx && <TxLink hash={tx} label="latest" />}
       </div>
@@ -201,8 +201,8 @@ function ReceivedRow({ icon, title, count, xlm, note, tx }: { icon: React.ReactN
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-black/30 p-5 backdrop-blur-sm">
-      <p className="mb-4 font-mono text-xs uppercase tracking-wider text-muted-foreground">{title}</p>
+    <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
+      <p className="mb-4 font-mono text-xs uppercase tracking-wider text-foreground/90">{title}</p>
       {children}
     </div>
   )
@@ -210,9 +210,9 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function Field({ label, value, mono, explorer }: { label: string; value: string; mono?: boolean; explorer?: "contract" }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-1">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      {mono ? <Mono value={value} explorer={explorer} /> : <span className="text-sm text-foreground/90">{value}</span>}
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-foreground/75">{label}</span>
+      {mono ? <Mono value={value} explorer={explorer} /> : <span className="font-mono text-sm text-foreground/90">{value}</span>}
     </div>
   )
 }
@@ -222,23 +222,23 @@ function Mono({ value, explorer }: { value: string; explorer?: "contract" }) {
   const short = value && value.length > 16 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value
   const url = explorer === "contract" ? `https://stellar.expert/explorer/testnet/contract/${value}` : undefined
   return (
-    <span className="flex items-center gap-1.5 font-mono text-xs text-foreground/80">
-      {short}
+    <span className="flex items-center gap-1.5 font-mono text-sm text-foreground/90">
+      <span className="shrink-0" title={value}>{short}</span>
       {value && value !== "—" && (
         <>
           <button
             onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1000) }}
-            className="text-muted-foreground hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
             title="copy"
           >
-            <Copy className="h-3 w-3" />
+            <Copy className="h-3.5 w-3.5" />
           </button>
           {url && (
-            <a href={url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
-              <ExternalLink className="h-3 w-3" />
+            <a href={url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground">
+              <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
-          {copied && <span className="text-[10px] text-emerald-400">copied</span>}
+          {copied && <span className="shrink-0 text-xs text-emerald-400">copied</span>}
         </>
       )}
     </span>

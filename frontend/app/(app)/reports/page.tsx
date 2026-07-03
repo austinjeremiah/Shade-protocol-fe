@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { usePrivy } from "@privy-io/react-auth"
 import { api } from "@/lib/api"
-import { useMyNotes } from "@/lib/hooks"
+import { useMyNotes, useActivity } from "@/lib/hooks"
 import { TxLink } from "@/components/tx-link"
-import { FileCheck2, ShieldCheck, Check } from "lucide-react"
+import { ActivityItem } from "@/components/activity-item"
+import { FileCheck2, ShieldCheck, Check, KeyRound } from "lucide-react"
 
 // Shade View: privacy is the default, but the note owner can produce a signed,
 // selective-disclosure report for an auditor — proving which notes/nullifiers/
@@ -25,7 +26,11 @@ type SignedReport = {
 export default function CompliancePage() {
   const { authenticated } = usePrivy()
   const notes = useMyNotes(authenticated)
+  const activity = useActivity(authenticated)
   const owned = notes.data?.notes ?? []
+  const recentReports = (activity.data?.activity ?? [])
+    .filter((a) => a.event_type === "shade_view.report.generate")
+    .slice(0, 6)
 
   const [discloseAmounts, setDiscloseAmounts] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -48,14 +53,16 @@ export default function CompliancePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="space-y-8">
       <div>
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Compliance · Shade View</p>
         <h1 className="mt-2 font-sans text-4xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>Selective disclosure</h1>
         <p className="mt-2 font-mono text-xs text-muted-foreground">Private by default. Prove your own activity to an auditor — signed, and only what you choose to reveal.</p>
       </div>
 
-      <div className="rounded-xl border border-border bg-black/30 p-6">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      <div className="mx-auto w-full max-w-2xl space-y-8">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <FileCheck2 className="h-3.5 w-3.5 text-[#2563eb]" /> Generate a view-key report
         </div>
@@ -67,7 +74,7 @@ export default function CompliancePage() {
           onClick={() => !busy && setDiscloseAmounts((v) => !v)}
           disabled={busy}
           className={`mt-4 flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors disabled:opacity-60 ${
-            discloseAmounts ? "border-[#2563eb]/50 bg-[#2563eb]/5" : "border-border"
+            discloseAmounts ? "border-[#2563eb]/50 bg-[#2563eb]/10 backdrop-blur-sm" : "border-border bg-black/30 backdrop-blur-sm"
           }`}
         >
           <span>
@@ -91,7 +98,7 @@ export default function CompliancePage() {
       </div>
 
       {report && (
-        <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.03] p-6">
+        <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.03] p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-emerald-400/45 hover:shadow-[0_10px_30px_-12px_rgba(52,211,153,0.35)]">
           <div className="flex items-center gap-2 border-b border-border pb-3 font-mono text-xs uppercase tracking-wider text-emerald-400">
             <ShieldCheck className="h-4 w-4" /> Signed view-key report
           </div>
@@ -130,7 +137,7 @@ export default function CompliancePage() {
               </Field>
             )}
 
-            <div className="rounded-lg border border-border bg-black/40 p-3">
+            <div className="rounded-lg border border-border bg-black/40 p-3 backdrop-blur-sm">
               <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Service signature (ed25519) · auditor-verifiable</p>
               <Row label="Signer pubkey" value={report.servicePubkeyHex} />
               <Row label="Signature" value={report.serviceSignatureHex} />
@@ -139,6 +146,32 @@ export default function CompliancePage() {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Side panel: explainer + recent report activity */}
+      <aside className="space-y-6">
+        <div className="rounded-xl border border-border bg-black/30 p-7 backdrop-blur-sm">
+          <p className="mb-4 font-mono text-sm uppercase tracking-wider text-foreground">How disclosure works</p>
+          <div className="flex items-start gap-3.5">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#2563eb]/30 bg-[#2563eb]/10">
+              <KeyRound className="h-4 w-4 text-[#2563eb]" />
+            </span>
+            <p className="font-mono text-sm leading-relaxed text-foreground/90">Note → Nullifier → On-chain proof — only what you choose is revealed</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-black/30 p-7 backdrop-blur-sm">
+          <p className="mb-2 font-mono text-sm uppercase tracking-wider text-foreground">Recent reports</p>
+          {recentReports.length === 0 ? (
+            <p className="font-mono text-xs text-muted-foreground">no reports generated yet.</p>
+          ) : (
+            <div className="space-y-0.5">
+              {recentReports.map((a, i) => <ActivityItem key={i} event={a.event_type} tx={a.tx_hash} at={a.created_at} compact />)}
+            </div>
+          )}
+        </div>
+      </aside>
+      </div>
     </div>
   )
 }
@@ -154,7 +187,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-black/30 p-3">
+    <div className="rounded-lg border border-border bg-black/30 p-3 backdrop-blur-sm">
       <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
       {children}
     </div>

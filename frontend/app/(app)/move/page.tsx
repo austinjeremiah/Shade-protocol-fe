@@ -4,26 +4,64 @@ import { useState } from "react"
 import { usePrivy } from "@privy-io/react-auth"
 import { useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { useMyNotes, useContracts, balanceUsdc, type NoteRow } from "@/lib/hooks"
+import { useMyNotes, useContracts, useActivity, balanceUsdc, type NoteRow } from "@/lib/hooks"
 import { LiveLog } from "@/components/live-log"
 import { ZkPanel, type ZkState } from "@/components/zk-panel"
+import { ActivityItem } from "@/components/activity-item"
 import { ArrowUpRight, ArrowLeftRight, Check, Lock } from "lucide-react"
 
 type Tab = "withdraw" | "trade"
 
 export default function MovePage() {
   const [tab, setTab] = useState<Tab>("withdraw")
+  const { authenticated } = usePrivy()
+  const notes = useMyNotes(authenticated)
+  const activity = useActivity(authenticated)
+  const active = (notes.data?.notes ?? []).filter((n) => n.status === "active")
+  const balance = balanceUsdc(notes.data?.notes)
+  const recent = (activity.data?.activity ?? [])
+    .filter((a) => a.event_type === "withdraw.settled" || a.event_type === "trade.settled")
+    .slice(0, 6)
+
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <div>
+    <div className="space-y-8">
+      <div className="pl-10">
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Move</p>
         <h1 className="mt-2 font-sans text-4xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>Spend your private notes</h1>
       </div>
-      <div className="flex gap-2">
+
+      <div className="flex gap-2 pl-10">
         <TabBtn active={tab === "withdraw"} onClick={() => setTab("withdraw")}>Withdraw</TabBtn>
         <TabBtn active={tab === "trade"} onClick={() => setTab("trade")}>Trade</TabBtn>
       </div>
-      {tab === "withdraw" ? <Withdraw /> : <Trade />}
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="mx-auto w-full max-w-2xl space-y-8">
+          {tab === "withdraw" ? <Withdraw /> : <Trade />}
+        </div>
+
+        {/* Side panel: private notes summary + recent moves */}
+        <aside className="space-y-6">
+          <div className="rounded-xl border border-border bg-black/30 p-7 backdrop-blur-sm">
+            <p className="font-mono text-sm uppercase tracking-wider text-foreground">Your private notes</p>
+            <p className="mt-3 font-sans text-3xl font-light" style={{ color: "#EDEAE3" }}>
+              {active.length} <span className="text-sm text-muted-foreground">active</span>
+            </p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">{balance.toFixed(2)} USDC total</p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-black/30 p-7 backdrop-blur-sm">
+            <p className="mb-2 font-mono text-sm uppercase tracking-wider text-foreground">Recent moves</p>
+            {recent.length === 0 ? (
+              <p className="font-mono text-xs text-muted-foreground">no withdrawals or trades yet.</p>
+            ) : (
+              <div className="space-y-0.5">
+                {recent.map((a, i) => <ActivityItem key={i} event={a.event_type} tx={a.tx_hash} at={a.created_at} compact />)}
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }
@@ -102,7 +140,7 @@ function Withdraw() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-black/30 p-6">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Private note to spend</p>
         {active.length === 0 ? (
           <p className="mt-3 font-mono text-xs text-muted-foreground">no active notes — <a href="/deposit" className="text-[#2563eb] hover:underline">shield some USDC first</a>.</p>
@@ -113,7 +151,7 @@ function Withdraw() {
                 key={n.commitment}
                 onClick={() => setSelected(n.commitment)}
                 className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                  commitment === n.commitment ? "border-[#2563eb]/50 bg-[#2563eb]/5" : "border-border hover:border-border/80"
+                  commitment === n.commitment ? "border-[#2563eb]/50 bg-[#2563eb]/10 backdrop-blur-sm" : "border-border bg-black/30 backdrop-blur-sm hover:border-border/80"
                 }`}
               >
                 <span className="font-mono text-xs text-foreground/70">{n.commitment.slice(0, 12)}…{n.commitment.slice(-6)}</span>
@@ -243,7 +281,7 @@ function Trade() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-black/30 p-6">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Private note to trade</p>
         {active.length === 0 ? (
           <p className="mt-3 font-mono text-xs text-muted-foreground">no active notes — <a href="/deposit" className="text-[#2563eb] hover:underline">shield some USDC first</a>.</p>
@@ -254,7 +292,7 @@ function Trade() {
                 key={n.commitment}
                 onClick={() => setSelected(n.commitment)}
                 className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                  commitment === n.commitment ? "border-[#2563eb]/50 bg-[#2563eb]/5" : "border-border hover:border-border/80"
+                  commitment === n.commitment ? "border-[#2563eb]/50 bg-[#2563eb]/10 backdrop-blur-sm" : "border-border bg-black/30 backdrop-blur-sm hover:border-border/80"
                 }`}
               >
                 <span className="font-mono text-xs text-foreground/70">{n.commitment.slice(0, 12)}…{n.commitment.slice(-6)}</span>
@@ -265,7 +303,7 @@ function Trade() {
         )}
 
         {/* Preview: USDC in -> XLM out */}
-        <div className="mt-5 flex items-center justify-between gap-4 rounded-lg border border-border bg-black/40 px-4 py-4">
+        <div className="mt-5 flex items-center justify-between gap-4 rounded-lg border border-border bg-black/40 px-4 py-4 backdrop-blur-sm">
           <div className="text-center">
             <p className="font-sans text-2xl font-light" style={{ color: "#EDEAE3" }}>{inUsdc.toFixed(2)}</p>
             <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">USDC · private</p>
@@ -300,7 +338,7 @@ function Trade() {
 
       {/* Architecture lifecycle: RFQ intent -> MPC match -> ZK -> settle */}
       {(busy || done) && (
-        <div className="rounded-xl border border-border bg-black/30 p-5">
+        <div className="rounded-xl border border-border bg-black/30 p-5 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
           <p className="mb-4 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Pipeline · all three must agree</p>
           <div className="space-y-3">
             {STAGES.map((s, i) => {
@@ -336,7 +374,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button
       onClick={onClick}
       className={`rounded-full border px-5 py-2 font-mono text-xs uppercase tracking-wider transition-colors ${
-        active ? "border-[#2563eb]/50 bg-[#2563eb]/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground"
+        active ? "border-[#2563eb]/50 bg-[#2563eb]/10 text-foreground backdrop-blur-sm" : "border-border bg-black/30 text-muted-foreground backdrop-blur-sm hover:text-foreground"
       }`}
     >
       {children}

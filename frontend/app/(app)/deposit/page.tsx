@@ -11,7 +11,16 @@ import { LiveLog } from "@/components/live-log"
 import { ZkPanel, type ZkState } from "@/components/zk-panel"
 import { TxLink } from "@/components/tx-link"
 import { useContracts } from "@/lib/hooks"
-import { ArrowDown, Check, Loader2 } from "lucide-react"
+import { ArrowDown, Check, Loader2, Wallet, Radio, Coins, ShieldCheck, KeyRound } from "lucide-react"
+
+// Static "how it works" steps — the real mechanism, no live data needed.
+const HOW_IT_WORKS = [
+  { icon: Wallet, text: "Approve + burn USDC on Arbitrum (MetaMask)" },
+  { icon: Radio, text: "Circle CCTP attests the burn" },
+  { icon: Coins, text: "USDC minted on Stellar to the shielded pool" },
+  { icon: KeyRound, text: "Backend generates a Poseidon commitment + ZK proof" },
+  { icon: ShieldCheck, text: "Proof verified on-chain — your private note is live" },
+] as const
 
 // The note denomination is a fixed 0.5 USDC. We burn slightly more (0.505) to cover
 // the CCTP fast-transfer fee so the minted amount fully backs the note.
@@ -164,15 +173,17 @@ export default function DepositPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <div>
+    <div className="space-y-8">
+      <div className="pl-10">
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Shield</p>
         <h1 className="mt-2 font-sans text-4xl font-light tracking-tight" style={{ color: "#EDEAE3" }}>Deposit USDC privately</h1>
         <p className="mt-2 font-mono text-xs text-muted-foreground">Arbitrum → Stellar via CCTP. Your USDC becomes a private note, hidden from the public chain.</p>
       </div>
 
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+    <div className="mx-auto w-full max-w-2xl space-y-8">
       {/* Amount card */}
-      <div className="rounded-xl border border-border bg-black/30 p-6">
+      <div className="rounded-xl border border-border bg-black/30 p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_10px_30px_-12px_rgba(37,99,235,0.35)]">
         <div className="flex items-center justify-between">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">From · Arbitrum Sepolia</p>
@@ -200,7 +211,7 @@ export default function DepositPage() {
 
       {/* Steps */}
       {steps.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-border bg-black/40 p-4">
+        <div className="space-y-2 rounded-lg border border-border bg-black/40 p-4 backdrop-blur-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#2563eb]/40 hover:shadow-[0_8px_24px_-10px_rgba(37,99,235,0.35)]">
           {steps.map((s, i) => (
             <div key={i} className="flex items-center gap-3 font-mono text-xs">
               {s.status === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563eb]" />
@@ -219,6 +230,25 @@ export default function DepositPage() {
       {/* Live log + ZK panel */}
       {jobId && <LiveLog jobId={jobId} title="Backend · CCTP + ZK note registration" />}
       {steps.length > 0 && <ZkPanel state={zk} />}
+    </div>
+
+    {/* Side panel: how it works */}
+    <aside className="space-y-6">
+      <div className="rounded-xl border border-border bg-black/30 p-7 backdrop-blur-sm">
+        <p className="mb-5 font-mono text-sm uppercase tracking-wider text-foreground">How it works</p>
+        <div className="space-y-5">
+          {HOW_IT_WORKS.map((s, i) => (
+            <div key={i} className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#2563eb]/30 bg-[#2563eb]/10">
+                <s.icon className="h-4 w-4 text-[#2563eb]" />
+              </span>
+              <p className="font-mono text-sm leading-relaxed text-foreground/90">{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+    </div>
     </div>
   )
 }
