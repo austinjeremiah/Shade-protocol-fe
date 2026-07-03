@@ -15,12 +15,14 @@ const TX_LABELS: Record<string, string> = {
   fillTxHash: "fill tx",
   mintTxHash: "mint tx",
 }
+// Only surface ACTUAL transaction hashes (the allowlist above). Fields like
+// batchHash / intentHash / nullifier are 0x-data, not txs — never link them.
 function txFields(result: Record<string, unknown> | null): { label: string; hash: string }[] {
   if (!result) return []
   const out: { label: string; hash: string }[] = []
   for (const [k, v] of Object.entries(result)) {
-    if (typeof v !== "string" || !/Hash$/.test(k)) continue
-    if (/^0x[a-fA-F0-9]{64}$/.test(v) || /^[A-Fa-f0-9]{64}$/.test(v)) out.push({ label: TX_LABELS[k] ?? k, hash: v })
+    if (typeof v !== "string" || !(k in TX_LABELS)) continue
+    if (/^0x[a-fA-F0-9]{64}$/.test(v) || /^[A-Fa-f0-9]{64}$/.test(v)) out.push({ label: TX_LABELS[k], hash: v })
   }
   return out
 }

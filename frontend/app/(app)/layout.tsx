@@ -11,7 +11,6 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/deposit", label: "Deposit" },
   { href: "/move", label: "Move" },
-  { href: "/mpc", label: "Private Match" },
   { href: "/reports", label: "Compliance" },
   { href: "/activity", label: "Activity" },
 ]
